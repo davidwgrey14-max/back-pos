@@ -2730,6 +2730,9 @@ app.post('/api/auth/check-device', async (req, res) => {
   try {
     const { email, deviceInfo } = req.body;
 
+    console.log('📱 Checking device for:', email);
+    console.log('📱 Device ID:', deviceInfo.deviceId);
+
     let user = await models.User.findOne({ email });
     if (!user) {
       user = await models.Cashier.findOne({ email });
@@ -2742,115 +2745,163 @@ app.post('/api/auth/check-device', async (req, res) => {
       });
     }
 
+    console.log('✅ User found:', user.email, user.name);
+
+    // Try to find existing device FIRST
     let device = await Device.findOne({
       userId: user._id,
       deviceId: deviceInfo.deviceId
     });
 
-    if (!device) {
-      const requestToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    console.log('🔍 Device found:', device ? 'Yes' : 'No');
 
+    if (device) {
+      console.log('📱 Existing device:', {
+        id: device._id,
+        name: device.deviceName,
+        isVerified: device.isVerified
+      });
+
+      // Device exists - check if verified
+      if (!device.isVerified) {
+        const pendingRequest = await VerificationRequest.findOne({
+          deviceId: device._id,
+          status: 'pending'
+        });
+
+        if (!pendingRequest) {
+          const requestToken = crypto.randomBytes(32).toString('hex');
+          const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+          const newRequest = new VerificationRequest({
+            userId: user._id,
+            deviceId: device._id,
+            requestToken: requestToken,
+            expiresAt: expiresAt,
+            ipAddress: deviceInfo.ipAddress || 'unknown',
+            userAgent: deviceInfo.userAgent || 'unknown'
+          });
+          await newRequest.save();
+
+          console.log('📧 Attempting to send device verification email for pending device...');
+          const emailSent = await sendDeviceVerificationEmail(user, device, newRequest);
+          console.log(`📧 Device verification email sent: ${emailSent}`);
+        }
+
+        return res.json({
+          success: false,
+          requiresVerification: true,
+          message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
+          deviceInfo: {
+            deviceName: device.deviceName,
+            os: device.os,
+            browser: device.browser,
+            macAddress: device.macAddress,
+            ipAddress: device.ipAddress,
+            deviceType: device.deviceType
+          }
+        });
+      }
+
+      // Device is verified - update login info
+      device.lastLogin = new Date();
+      device.loginCount = (device.loginCount || 0) + 1;
+      device.ipAddress = deviceInfo.ipAddress || 'unknown';
+      await device.save();
+
+      return res.json({
+        success: true,
+        message: 'Device verified',
+        device: {
+          id: device._id,
+          deviceName: device.deviceName,
+          isVerified: device.isVerified
+        }
+      });
+    }
+
+    // ============================================================
+    // DEVICE DOES NOT EXIST - Create new one
+    // ============================================================
+    console.log('🆕 Creating new device...');
+
+    // Check if device exists without userId (shouldn't happen but just in case)
+    const existingDeviceWithoutUser = await Device.findOne({
+      deviceId: deviceInfo.deviceId
+    });
+
+    if (existingDeviceWithoutUser) {
+      console.log('⚠️ Device exists without userId - updating...');
+      // Update the existing device with the userId
+      existingDeviceWithoutUser.userId = user._id;
+      existingDeviceWithoutUser.deviceName = deviceInfo.deviceName || 'Unknown Device';
+      existingDeviceWithoutUser.deviceType = deviceInfo.deviceType || 'unknown';
+      existingDeviceWithoutUser.os = deviceInfo.os;
+      existingDeviceWithoutUser.osVersion = deviceInfo.osVersion;
+      existingDeviceWithoutUser.browser = deviceInfo.browser;
+      existingDeviceWithoutUser.browserVersion = deviceInfo.browserVersion;
+      existingDeviceWithoutUser.macAddress = deviceInfo.macAddress;
+      existingDeviceWithoutUser.ipAddress = deviceInfo.ipAddress || 'unknown';
+      existingDeviceWithoutUser.isVerified = false;
+      existingDeviceWithoutUser.firstLogin = new Date();
+      existingDeviceWithoutUser.lastLogin = new Date();
+      await existingDeviceWithoutUser.save();
+      
+      device = existingDeviceWithoutUser;
+    } else {
+      // Create completely new device
       const newDevice = new Device({
         userId: user._id,
         deviceId: deviceInfo.deviceId,
         deviceName: deviceInfo.deviceName || 'Unknown Device',
         deviceType: deviceInfo.deviceType || 'unknown',
-        os: deviceInfo.os,
-        osVersion: deviceInfo.osVersion,
-        browser: deviceInfo.browser,
-        browserVersion: deviceInfo.browserVersion,
-        macAddress: deviceInfo.macAddress,
-        ipAddress: deviceInfo.ipAddress,
+        os: deviceInfo.os || 'Unknown',
+        osVersion: deviceInfo.osVersion || '',
+        browser: deviceInfo.browser || 'Unknown',
+        browserVersion: deviceInfo.browserVersion || '',
+        macAddress: deviceInfo.macAddress || 'Unknown',
+        ipAddress: deviceInfo.ipAddress || 'unknown',
         isVerified: false,
         firstLogin: new Date(),
         lastLogin: new Date()
       });
       await newDevice.save();
-
-      const verificationRequest = new VerificationRequest({
-        userId: user._id,
-        deviceId: newDevice._id,
-        requestToken: requestToken,
-        expiresAt: expiresAt,
-        ipAddress: deviceInfo.ipAddress,
-        userAgent: deviceInfo.userAgent
-      });
-      await verificationRequest.save();
-
-      // Send verification email
-      console.log('📧 Attempting to send device verification email from check-device...');
-      const emailSent = await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
-      console.log(`📧 Device verification email sent: ${emailSent}`);
-
-      return res.json({
-        success: false,
-        requiresVerification: true,
-        message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
-        requestId: verificationRequest._id,
-        deviceInfo: {
-          deviceName: newDevice.deviceName,
-          os: newDevice.os,
-          browser: newDevice.browser,
-          macAddress: newDevice.macAddress,
-          ipAddress: newDevice.ipAddress,
-          deviceType: newDevice.deviceType
-        }
-      });
+      device = newDevice;
     }
 
-    if (!device.isVerified) {
-      const pendingRequest = await VerificationRequest.findOne({
-        deviceId: device._id,
-        status: 'pending'
-      });
+    console.log('✅ New device created:', device._id);
 
-      if (!pendingRequest) {
-        const requestToken = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Create verification request for the new device
+    const requestToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-        const newRequest = new VerificationRequest({
-          userId: user._id,
-          deviceId: device._id,
-          requestToken: requestToken,
-          expiresAt: expiresAt,
-          ipAddress: deviceInfo.ipAddress,
-          userAgent: deviceInfo.userAgent
-        });
-        await newRequest.save();
+    const verificationRequest = new VerificationRequest({
+      userId: user._id,
+      deviceId: device._id,
+      requestToken: requestToken,
+      expiresAt: expiresAt,
+      ipAddress: deviceInfo.ipAddress || 'unknown',
+      userAgent: deviceInfo.userAgent || 'unknown'
+    });
+    await verificationRequest.save();
 
-        console.log('📧 Attempting to send device verification email for pending device...');
-        const emailSent = await sendDeviceVerificationEmail(user, device, newRequest);
-        console.log(`📧 Device verification email sent: ${emailSent}`);
-      }
-
-      return res.json({
-        success: false,
-        requiresVerification: true,
-        message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
-        deviceInfo: {
-          deviceName: device.deviceName,
-          os: device.os,
-          browser: device.browser,
-          macAddress: device.macAddress,
-          ipAddress: device.ipAddress,
-          deviceType: device.deviceType
-        }
-      });
-    }
-
-    device.lastLogin = new Date();
-    device.loginCount = (device.loginCount || 0) + 1;
-    device.ipAddress = deviceInfo.ipAddress;
-    await device.save();
+    // Send verification email
+    console.log('📧 Attempting to send device verification email from check-device...');
+    const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
+    console.log(`📧 Device verification email sent: ${emailSent}`);
 
     return res.json({
-      success: true,
-      message: 'Device verified',
-      device: {
-        id: device._id,
+      success: false,
+      requiresVerification: true,
+      message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
+      requestId: verificationRequest._id,
+      deviceInfo: {
         deviceName: device.deviceName,
-        isVerified: device.isVerified
+        os: device.os,
+        browser: device.browser,
+        macAddress: device.macAddress,
+        ipAddress: device.ipAddress,
+        deviceType: device.deviceType
       }
     });
 
@@ -2863,7 +2914,6 @@ app.post('/api/auth/check-device', async (req, res) => {
     });
   }
 });
-
 // ==================== SESSION MANAGEMENT ROUTES ====================
 
 // Refresh session
