@@ -1902,7 +1902,160 @@ app.get('/api/debug/email-config', async (req, res) => {
     });
   }
 });
+// ==================== MANUAL DEVICE APPROVAL (EMERGENCY) ====================
 
+// Emergency manual approval - Bypass email verification
+app.post('/api/admin/manual-approve-device', async (req, res) => {
+  try {
+    const { email, secretKey } = req.body;
+    
+    console.log('🔑 Manual approval request for:', email);
+    
+    // Security: Use a strong secret key from environment
+    const validKey = process.env.MANUAL_APPROVAL_KEY || 'temp-key-change-me';
+    
+    if (!secretKey || secretKey !== validKey) {
+      console.log('❌ Invalid secret key provided');
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Invalid or missing secret key' 
+      });
+    }
+    
+    // Find user
+    let user = await models.User.findOne({ email });
+    if (!user) {
+      user = await models.Cashier.findOne({ email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    console.log('✅ User found:', user.email, user.name);
+    
+    // Find pending devices
+    const pendingDevices = await models.Device.find({
+      userId: user._id,
+      isVerified: false
+    });
+    
+    console.log(`📱 Found ${pendingDevices.length} pending devices`);
+    
+    // Approve all pending devices
+    const result = await models.Device.updateMany(
+      { userId: user._id, isVerified: false },
+      { $set: { isVerified: true, updatedAt: new Date() } }
+    );
+    
+    // Delete pending verification requests
+    const deleteResult = await models.VerificationRequest.deleteMany({
+      userId: user._id,
+      status: 'pending'
+    });
+    
+    console.log(`✅ Approved ${result.modifiedCount} device(s), deleted ${deleteResult.deletedCount} verification requests`);
+    
+    res.json({
+      success: true,
+      message: `Approved ${result.modifiedCount} device(s) for ${user.email}`,
+      data: {
+        modifiedCount: result.modifiedCount,
+        deletedRequests: deleteResult.deletedCount,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role || 'cashier'
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual approval error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to approve device',
+      error: error.message 
+    });
+  }
+});
+
+// Check pending devices for a user
+app.get('/api/admin/check-pending-devices', async (req, res) => {
+  try {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email parameter required'
+      });
+    }
+    
+    let user = await models.User.findOne({ email });
+    if (!user) {
+      user = await models.Cashier.findOne({ email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const pendingDevices = await models.Device.find({
+      userId: user._id,
+      isVerified: false
+    });
+    
+    const pendingRequests = await models.VerificationRequest.find({
+      userId: user._id,
+      status: 'pending'
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email
+        },
+        pendingDevices: pendingDevices.map(d => ({
+          id: d._id,
+          deviceName: d.deviceName,
+          os: d.os,
+          browser: d.browser,
+          macAddress: d.macAddress,
+          createdAt: d.createdAt
+        })),
+        pendingRequests: pendingRequests.map(r => ({
+          id: r._id,
+          requestToken: r.requestToken,
+          expiresAt: r.expiresAt,
+          createdAt: r.createdAt
+        })),
+        counts: {
+          devices: pendingDevices.length,
+          requests: pendingRequests.length
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error checking pending devices:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check pending devices',
+      error: error.message
+    });
+  }
+});
 // Test email sending endpoint
 app.post('/api/debug/test-email', async (req, res) => {
   try {
