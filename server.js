@@ -523,6 +523,7 @@ models.LoginHistory = LoginHistory;
 
 // ==================== STOCK MONITORING SYSTEM ====================
 
+// Send stock alert email - FIXED with better error handling
 const sendStockAlertEmail = async (products, alertType) => {
   try {
     // Ensure email transporter is initialized
@@ -531,18 +532,6 @@ const sendStockAlertEmail = async (products, alertType) => {
       await initializeEmail();
       if (!emailTransporter) {
         console.log('⚠️ Email service not configured - skipping stock alert');
-        return false;
-      }
-    }
-
-    // Verify transporter is working
-    try {
-      await emailTransporter.verify();
-    } catch (verifyError) {
-      console.error('❌ Email transporter verification failed:', verifyError.message);
-      await initializeEmail(); // Try to reinitialize
-      if (!emailTransporter) {
-        console.log('⚠️ Email service still not configured - skipping stock alert');
         return false;
       }
     }
@@ -624,7 +613,7 @@ const sendStockAlertEmail = async (products, alertType) => {
     `;
 
     const mailOptions = {
-      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'davidwgrey14@gmail.com'}>`,
+      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
       to: adminEmail,
       subject: subject,
       html: html,
@@ -1854,98 +1843,6 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
   } catch (error) {
     console.error('❌ Error in sendDeviceVerificationEmail:', error);
     console.error('❌ Error stack:', error.stack);
-    return false;
-  }
-};
-const sendDeviceApprovedEmail = async (user, device) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) return false;
-    }
-
-    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: #10B981; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">✅ Device Approved</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <p>Dear ${user.name},</p>
-          <p>Your device has been <strong>approved</strong> for access to ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <p><strong>Device:</strong> ${device.deviceName}</p>
-            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
-            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
-            <p><strong>MAC Address:</strong> ${device.macAddress}</p>
-          </div>
-          <p>You can now log in from this device.</p>
-          <p><a href="${frontendUrl}/login" style="background: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Log In Now</a></p>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-        </div>
-      </div>
-    `;
-
-    await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: '✅ Device Approved for Login',
-      html: html
-    });
-
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send device approved email:', error);
-    return false;
-  }
-};
-
-const sendDeviceRejectedEmail = async (user, device, reason) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) return false;
-    }
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: #EF4444; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">❌ Device Rejected</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <p>Dear ${user.name},</p>
-          <p>Your device request has been <strong>rejected</strong> by an administrator.</p>
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <p><strong>Device:</strong> ${device.deviceName}</p>
-            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
-            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
-          </div>
-          ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 15px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400E;">
-              <strong>⚠️ Security Alert:</strong> If you didn't request this access, please contact your administrator immediately.
-            </p>
-          </div>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-        </div>
-      </div>
-    `;
-
-    await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: '❌ Device Rejected for Login',
-      html: html
-    });
-
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send device rejected email:', error);
     return false;
   }
 };
@@ -4634,31 +4531,7 @@ const initializeServer = async () => {
 };
 
 initializeServer();
-// Force email initialization on startup
-const forceInitializeEmail = async () => {
-  console.log('📧 Forcing email initialization...');
-  const result = await initializeEmail();
-  console.log(`📧 Email initialized: ${result ? '✅ SUCCESS' : '❌ FAILED'}`);
-  return result;
-};
 
-// Call this when the server starts
-forceInitializeEmail();
-
-// Also add this to the initializeServer function
-const originalInitializeServer = initializeServer;
-initializeServer = async () => {
-  if (dbInitialized) return;
-
-  try {
-    await connectDB();
-    await forceInitializeEmail();
-    dbInitialized = true;
-    console.log('✅ Serverless initialization complete');
-  } catch (error) {
-    console.error('❌ Serverless initialization failed:', error);
-  }
-};
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
