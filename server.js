@@ -242,7 +242,6 @@ const createModels = () => {
 };
 
 // Initialize models immediately (before connection)
-// This ensures models are available even if connection is delayed
 const initializeModelsImmediately = () => {
   console.log('🔧 Initializing models immediately...');
   const schemas = {
@@ -670,7 +669,6 @@ const connectDB = async () => {
     const conn = await mongoose.connect(connectionString, connectionOptions);
     cachedDb = conn;
     
-    // Models are already initialized, but we can update them if needed
     console.log('🎉 Database initialization completed successfully');
     return conn;
     
@@ -802,7 +800,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
 
-// ==================== CALCULATION UTILITIES ====================
+// ==================== FIXED CALCULATION UTILITIES ====================
 
 const CalculationUtils = {
   safeNumber: (value, defaultValue = 0) => {
@@ -829,21 +827,45 @@ const CalculationUtils = {
     return safeRevenue > 0 ? (safeProfit / safeRevenue) * 100 : 0;
   },
 
+  // FIXED: COGS should only recognize cost for what was actually paid
   calculateCOGS: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
-      const cost = CalculationUtils.safeNumber(transaction.cost);
-      return sum + cost;
+      const totalCost = CalculationUtils.safeNumber(transaction.cost);
+      
+      // For credit transactions, only recognize COGS for the paid portion
+      if (transaction.isCreditTransaction) {
+        const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount);
+        const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid);
+        const paidRatio = totalAmount > 0 ? Math.min(amountPaid / totalAmount, 1) : 0;
+        return sum + totalCost * paidRatio;
+      }
+      
+      // For credit payments (payments made on existing credit), no COGS
+      if (transaction.isCreditPayment) {
+        return sum;
+      }
+      
+      return sum + totalCost;
     }, 0);
   },
 
+  // FIXED: Revenue should include all payments made for credit transactions
   calculateRevenue: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
+      // For credit payments, use the payment amount
       if (transaction.isCreditPayment) {
         return sum + CalculationUtils.safeNumber(transaction.totalAmount);
       }
-      return sum + CalculationUtils.safeNumber(transaction.recognizedRevenue || transaction.immediateRevenue || transaction.totalAmount);
+      
+      // For credit transactions, use amount paid so far
+      if (transaction.isCreditTransaction) {
+        return sum + CalculationUtils.safeNumber(transaction.amountPaid);
+      }
+      
+      // For regular transactions, use total amount
+      return sum + CalculationUtils.safeNumber(transaction.totalAmount);
     }, 0);
   },
 
@@ -874,6 +896,7 @@ const CalculationUtils = {
               itemCost = CalculationUtils.safeNumber(product.buyingPrice);
             }
           } else if (item.price && CalculationUtils.safeNumber(item.price) > 0) {
+            // Estimate cost as 30% of price as fallback
             itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
           }
           totalCost += itemCost * quantity;
@@ -887,15 +910,17 @@ const CalculationUtils = {
     }
   },
 
+  // FIXED: Process transaction with correct profit and revenue recognition
   processSingleTransaction: async (transaction, products = []) => {
     try {
       if (!transaction) return CalculationUtils.createFallbackTransaction();
 
+      // Handle credit payments (payments on existing credit)
       if (transaction.isCreditPayment) {
         return {
           ...transaction,
           totalAmount: CalculationUtils.safeNumber(transaction.totalAmount),
-          cost: 0,
+          cost: 0, // Credit payments have no COGS
           profit: CalculationUtils.safeNumber(transaction.totalAmount),
           profitMargin: 100,
           isCreditTransaction: false,
@@ -922,19 +947,44 @@ const CalculationUtils = {
       const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) ||
                          CalculationUtils.safeNumber(transaction.amount) || 0;
      
-      const cost = await CalculationUtils.calculateCostFromItems(transaction, products);
+      // Calculate full cost of goods sold (total cost for all items)
+      const fullCost = await CalculationUtils.calculateCostFromItems(transaction, products);
      
-      const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) ||
-                        CalculationUtils.safeNumber(transaction.paidAmount) || 0;
-     
-      const recognizedRevenue = isCredit ? amountPaid : totalAmount;
-      const outstandingRevenue = isCredit ?
-        (CalculationUtils.safeNumber(transaction.outstandingRevenue) ||
-         CalculationUtils.safeNumber(transaction.balanceDue) ||
-         Math.max(0, totalAmount - amountPaid)) : 0;
-      const immediateRevenue = isCredit ? amountPaid : totalAmount;
+      // Get cumulative amount paid (including upfront + all payments)
+      let cumulativePaid = CalculationUtils.safeNumber(transaction.amountPaid) ||
+                          CalculationUtils.safeNumber(transaction.paidAmount) || 0;
+      
+      // If there's payment history, use it to calculate total paid
+      if (transaction.paymentHistory && Array.isArray(transaction.paymentHistory)) {
+        const historyTotal = transaction.paymentHistory.reduce((sum, p) => 
+          sum + CalculationUtils.safeNumber(p.amount), 0);
+        if (historyTotal > cumulativePaid) {
+          cumulativePaid = historyTotal;
+        }
+      }
+      
+      // For credit transactions, recognized revenue is the cumulative amount paid
+      // NOT just the upfront payment
+      const recognizedRevenue = isCredit ? Math.min(cumulativePaid, totalAmount) : totalAmount;
+      
+      // Outstanding revenue is the remaining balance
+      const outstandingRevenue = isCredit ? Math.max(0, totalAmount - cumulativePaid) : 0;
+      
+      // Immediate revenue is the upfront payment (for tracking cashier performance)
+      const immediateRevenue = isCredit ? CalculationUtils.safeNumber(transaction.upfrontPaymentAmount || cumulativePaid) : totalAmount;
+      
+      // FIXED: Profit should be calculated based on the recognized revenue
+      // But we need to prorate the cost based on what portion is recognized
+      let cost = 0;
+      if (isCredit) {
+        const paidRatio = totalAmount > 0 ? Math.min(recognizedRevenue / totalAmount, 1) : 0;
+        cost = fullCost * paidRatio;
+      } else {
+        cost = fullCost;
+      }
+      
       const profit = CalculationUtils.calculateProfit(recognizedRevenue, cost);
-      const profitMargin = CalculationUtils.calculateProfitMargin(recognizedRevenue, profit);
+      const profitMargin = CalculationUtils.calculateProfitMargin(totalAmount, profit);
 
       const saleDate = transaction.saleDate || transaction.createdAt || transaction.date;
       const displayDate = transaction.displayDate ||
@@ -944,7 +994,7 @@ const CalculationUtils = {
       if (isCredit) {
         if (outstandingRevenue <= 0) {
           creditStatus = 'paid';
-        } else if (amountPaid > 0) {
+        } else if (cumulativePaid > 0) {
           creditStatus = 'partially_paid';
         } else {
           creditStatus = 'pending';
@@ -963,7 +1013,7 @@ const CalculationUtils = {
         isCreditTransaction: isCredit,
         recognizedRevenue,
         outstandingRevenue,
-        amountPaid,
+        amountPaid: cumulativePaid,
         immediateRevenue,
         creditStatus,
         itemsCount: transaction.items ? transaction.items.reduce((sum, item) =>
@@ -1025,8 +1075,8 @@ const CalculationUtils = {
     const creditPayments = filteredTransactions.filter(t => t.isCreditPayment);
 
     const totalRevenue = CalculationUtils.calculateRevenue(filteredTransactions);
-    const creditSales = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
-    const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+    const creditSalesTotal = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+    const nonCreditSalesTotal = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const creditPaymentRevenue = creditPayments.reduce((sum, t) => sum + t.totalAmount, 0);
     const costOfGoodsSold = CalculationUtils.calculateCOGS(filteredTransactions);
     const grossProfit = totalRevenue - costOfGoodsSold;
@@ -1035,20 +1085,20 @@ const CalculationUtils = {
 
     let totalCash = 0;
     let totalMpesaBank = 0;
-    let totalCredit = 0;
+    let totalCreditBalance = 0;
 
     filteredTransactions.forEach(transaction => {
       if (transaction.paymentSplit) {
         totalCash += CalculationUtils.safeNumber(transaction.paymentSplit.cash);
         totalMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.bank_mpesa);
-        totalCredit += CalculationUtils.safeNumber(transaction.paymentSplit.credit);
+        totalCreditBalance += CalculationUtils.safeNumber(transaction.paymentSplit.credit);
       } else {
         if (transaction.paymentMethod === 'cash') {
           totalCash += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
         } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
           totalMpesaBank += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
         } else if (transaction.paymentMethod === 'credit') {
-          totalCredit += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
+          totalCreditBalance += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
         } else if (transaction.paymentMethod === 'cash_bank_mpesa') {
           const half = CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue) / 2;
           totalCash += half;
@@ -1057,6 +1107,7 @@ const CalculationUtils = {
       }
     });
 
+    // FIXED: Outstanding credit from credits collection (not transactions)
     const outstandingCredit = credits
       .filter(credit => credit.status !== 'paid' &&
         (!selectedShop || selectedShop === 'all' ||
@@ -1069,8 +1120,8 @@ const CalculationUtils = {
 
     const financialStats = {
       totalSales: totalTransactions,
-      creditSales: creditSales,
-      nonCreditSales: nonCreditSales,
+      creditSales: creditSalesTotal,
+      nonCreditSales: nonCreditSalesTotal,
       creditPaymentRevenue: creditPaymentRevenue,
       totalRevenue: totalRevenue,
       totalExpenses: totalExpenses,
@@ -1098,8 +1149,8 @@ const CalculationUtils = {
         fromCompleteSales: CalculationUtils.calculateCOGS(nonCreditTransactions),
         fromCreditPayments: CalculationUtils.calculateCOGS(creditPayments)
       },
-      _cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
-      _revenueCalculation: 'immediate_revenue_includes_upfront_payments',
+      _cogsCalculation: 'prorated_based_on_payment',
+      _revenueCalculation: 'cumulative_payments_for_credit',
       _paymentTracking: 'payment_split_enhanced_with_upfront',
       _upfrontPaymentSupport: true,
       _calculatedAt: new Date().toISOString()
@@ -1266,7 +1317,7 @@ const getAllTransactionData = async (filters = {}) => {
       status: 1, isCreditTransaction: 1, creditStatus: 1,
       recognizedRevenue: 1, outstandingRevenue: 1, amountPaid: 1,
       paymentSplit: 1, immediateRevenue: 1, upfrontPaymentAmount: 1,
-      isCreditPayment: 1, createdAt: 1
+      isCreditPayment: 1, createdAt: 1, paymentHistory: 1
     };
 
     const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
@@ -1287,7 +1338,7 @@ const getAllTransactionData = async (filters = {}) => {
         .lean(),
       models.Credit.find(startDate && endDate ? {
         createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}, 'transactionId customerName customerPhone totalAmount amountPaid balanceDue dueDate status shop shopId shopName cashierId cashierName upfrontPaymentAmount immediateRevenue')
+      } : {}, 'transactionId customerName customerPhone totalAmount amountPaid balanceDue dueDate status shop shopId shopName cashierId cashierName upfrontPaymentAmount immediateRevenue paymentHistory')
         .populate('transactionId', 'totalAmount saleDate')
         .populate('shop', 'name location')
         .populate('cashierId', 'name email')
@@ -1382,7 +1433,7 @@ app.get('/api/health', (req, res) => {
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     email: emailTransporter ? 'configured' : 'disabled',
     authentication: 'email-based-secure-code',
-    cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
+    cogsCalculation: 'prorated_based_on_payment',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
     creditDisplayLogic: 'balance_due_only',
@@ -2368,7 +2419,7 @@ app.get('/api/transactions/combined', async (req, res) => {
       data: transactionData,
       processingTime,
       message: 'Combined transaction data fetched successfully',
-      cogsMethodology: 'complete_sales_plus_credit_sales_made_exclude_payments',
+      cogsMethodology: 'prorated_based_on_payment',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
       creditDisplayLogic: 'balance_due_only',
@@ -2529,7 +2580,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
         endDate: endDate || 'All time'
       },
       message: 'Transaction metrics fetched successfully',
-      cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
+      cogsCalculation: 'prorated_based_on_payment',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
       creditDisplayLogic: 'balance_due_only',
@@ -3079,6 +3130,7 @@ app.patch('/api/credits/:id/payment', async (req, res) => {
     credit.updatedAt = new Date();
     await credit.save();
 
+    // Update the original transaction with new payment info
     if (credit.transactionId) {
       await models.Transaction.findByIdAndUpdate(credit.transactionId, {
         amountPaid: newAmountPaid,
@@ -3241,6 +3293,7 @@ app.post('/api/transactions', async (req, res) => {
       }
     }
 
+    // Calculate profit based on recognized revenue
     const profit = recognizedRevenue - totalCost;
     const profitMargin = recognizedRevenue > 0 ? (profit / recognizedRevenue) * 100 : 0;
 
@@ -3275,6 +3328,7 @@ app.post('/api/transactions', async (req, res) => {
         transactionData.upfrontPaymentSplit = transactionData.upfrontPaymentSplit;
       }
      
+      // FIXED: Payment split should correctly allocate payments
       if (amountPaidNow > 0) {
         if (transactionData.upfrontPaymentMethod === 'cash') {
           transactionData.paymentSplit.cash = amountPaidNow;
@@ -3287,6 +3341,14 @@ app.post('/api/transactions', async (req, res) => {
         transactionData.paymentSplit.credit = outstandingRevenue;
       } else {
         transactionData.paymentSplit.credit = totalAmount;
+      }
+     
+      // Validate payment split totals
+      const totalSplit = transactionData.paymentSplit.cash + transactionData.paymentSplit.bank_mpesa + transactionData.paymentSplit.credit;
+      if (Math.abs(totalSplit - totalAmount) > 0.01) {
+        console.warn('⚠️ Payment split does not equal total amount:', { totalSplit, totalAmount });
+        // Auto-correct by adjusting credit
+        transactionData.paymentSplit.credit = totalAmount - transactionData.paymentSplit.cash - transactionData.paymentSplit.bank_mpesa;
       }
      
       if (!transactionData.dueDate) {
@@ -3368,6 +3430,16 @@ app.post('/api/transactions', async (req, res) => {
         }
 
         const credit = await models.Credit.create(creditData);
+        console.log('✅ Credit record created with upfront payment:', {
+          creditId: credit._id,
+          totalAmount: credit.totalAmount,
+          amountPaid: credit.amountPaid,
+          balanceDue: credit.balanceDue,
+          status: credit.status,
+          upfrontPaymentAmount: credit.upfrontPaymentAmount,
+          upfrontPaymentMethod: credit.upfrontPaymentMethod,
+          immediateRevenue: credit.immediateRevenue
+        });
       }
     }
 
@@ -3437,6 +3509,7 @@ async function handleCreditPayment(transactionData, res) {
     originalCredit.updatedAt = new Date();
     await originalCredit.save();
 
+    // FIXED: Update the original transaction's payment info
     if (originalCredit.transactionId) {
       await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
         amountPaid: newAmountPaid,
@@ -3480,6 +3553,16 @@ async function handleCreditPayment(transactionData, res) {
     const paymentTransaction = new models.Transaction(paymentTransactionData);
     await paymentTransaction.save();
 
+    console.log('✅ Credit payment processed successfully:', {
+      creditId: originalCredit._id,
+      paymentAmount,
+      newAmountPaid,
+      newBalanceDue,
+      status: newStatus,
+      paymentTransactionId: paymentTransaction._id,
+      paymentSplit: paymentSplit
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -3518,7 +3601,7 @@ app.get('/api/debug/database', async (req, res) => {
       counts,
       database: mongoose.connection.name,
       status: 'connected',
-      cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
+      cogsCalculation: 'prorated_based_on_payment',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
       creditDisplayLogic: 'balance_due_only',
@@ -3637,7 +3720,7 @@ app.get('/', (req, res) => {
       stockAlerts: '/api/stock/alerts'
     },
     serverless: true,
-    cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
+    cogsCalculation: 'prorated_based_on_payment',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
     creditDisplayLogic: 'balance_due_only',
