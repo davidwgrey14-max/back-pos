@@ -1649,29 +1649,78 @@ const generateAuthToken = (userId, email, role) => {
 };
 
 // ==================== EMAIL NOTIFICATIONS ====================
-
 const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
   try {
-    console.log('📧 Attempting to send device verification email...');
+    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
+    console.log('📧 User:', user.email, user.name);
+    console.log('📧 Device:', device.deviceName);
+    console.log('📧 Request ID:', verificationRequest._id);
+    console.log('📧 Email transporter exists:', !!emailTransporter);
 
     if (!emailTransporter) {
-      console.error('❌ Email transporter not configured');
-      return false;
+      console.error('❌ Email transporter not configured - cannot send verification email');
+      console.log('ℹ️ Please check EMAIL_USER and EMAIL_PASSWORD environment variables');
+      
+      // Try to re-initialize email
+      console.log('🔄 Attempting to re-initialize email transporter...');
+      await initializeEmail();
+      
+      if (!emailTransporter) {
+        console.error('❌ Still no email transporter after re-initialization');
+        return false;
+      }
     }
 
+    // Verify transporter
+    try {
+      console.log('🔄 Verifying email transporter...');
+      await emailTransporter.verify();
+      console.log('✅ Email transporter verified successfully');
+    } catch (verifyError) {
+      console.error('❌ Email transporter verification failed:', verifyError.message);
+      // Try to re-create the transporter
+      console.log('🔄 Re-creating email transporter...');
+      emailTransporter = createEmailTransporter();
+      if (emailTransporter) {
+        try {
+          await emailTransporter.verify();
+          console.log('✅ Re-created email transporter verified');
+        } catch (reVerifyError) {
+          console.error('❌ Re-created transporter also failed:', reVerifyError.message);
+          return false;
+        }
+      } else {
+        console.error('❌ Failed to re-create email transporter');
+        return false;
+      }
+    }
+
+    // Find admin users
+    console.log('🔍 Finding admin users...');
     const adminEmails = await models.User.find({ role: 'admin' }).select('email name');
-    const emailList = adminEmails.map(a => a.email);
+    let emailList = adminEmails.map(a => a.email);
+    console.log(`📧 Found ${emailList.length} admin users:`, emailList);
 
     if (emailList.length === 0) {
       console.log('ℹ️ No admin users found, using default admin email');
-      emailList.push(process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com');
+      const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+      emailList.push(defaultAdmin);
+      console.log(`📧 Using default admin email: ${defaultAdmin}`);
     }
 
-    console.log(`📧 Sending verification email to ${emailList.length} admin(s)`);
+    // Also add the user's email to the list (they should get a copy too)
+    if (user.email && !emailList.includes(user.email)) {
+      emailList.push(user.email);
+      console.log(`📧 Added user's email to notification list: ${user.email}`);
+    }
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
     const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
     const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+
+    console.log('📧 Frontend URL:', frontendUrl);
+    console.log('📧 Approve Link:', approveLink);
+    console.log('📧 Reject Link:', rejectLink);
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
@@ -1724,24 +1773,42 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
       </div>
     `;
 
+    // Send email to each recipient
+    let sentCount = 0;
+    console.log(`📧 Sending to ${emailList.length} recipients...`);
+
     for (const adminEmail of emailList) {
       try {
-        await emailTransporter.sendMail({
+        console.log(`📧 Attempting to send to: ${adminEmail}`);
+        const result = await emailTransporter.sendMail({
           from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
           to: adminEmail,
           subject: `🔐 New Device Login Request - ${user.name}`,
           html: html,
           priority: 'high'
         });
-        console.log(`✅ Verification email sent to ${adminEmail}`);
+        sentCount++;
+        console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
       } catch (error) {
         console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
+        if (error.response) {
+          console.error('📧 Email service response:', error.response);
+        }
+        if (error.code) {
+          console.error('📧 Error code:', error.code);
+        }
       }
     }
 
-    return true;
+    console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
+    console.log(`📧 Successfully sent to ${sentCount} of ${emailList.length} recipients`);
+    console.log(`📧 =============================================`);
+
+    return sentCount > 0;
+
   } catch (error) {
     console.error('❌ Error in sendDeviceVerificationEmail:', error);
+    console.error('❌ Error stack:', error.stack);
     return false;
   }
 };
@@ -1859,7 +1926,59 @@ app.get('/api/health', (req, res) => {
     modelsAvailable: Object.keys(models).join(', ')
   });
 });
+// Add this after your other debug endpoints
+app.get('/api/debug/email-config', async (req, res) => {
+  try {
+    const emailConfig = {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
+      emailUser: process.env.EMAIL_USER || 'Not set',
+      adminEmail: process.env.ADMIN_EMAIL || 'Not set',
+      transporterExists: !!emailTransporter,
+      isDevelopment: process.env.NODE_ENV === 'development',
+      isVercel: !!process.env.VERCEL,
+      frontendUrl: process.env.FRONTEND_URL || 'Not set'
+    };
 
+    // Try to verify transporter if it exists
+    let transporterVerified = false;
+    if (emailTransporter) {
+      try {
+        await emailTransporter.verify();
+        transporterVerified = true;
+        console.log('✅ Email transporter verified successfully');
+      } catch (verifyError) {
+        console.error('❌ Transporter verification failed:', verifyError.message);
+        emailConfig.verifyError = verifyError.message;
+      }
+    }
+
+    // Check if there are any verification requests
+    const pendingRequests = await VerificationRequest.countDocuments({ status: 'pending' });
+    const totalDevices = await Device.countDocuments();
+
+    res.json({
+      success: true,
+      data: {
+        emailConfig,
+        transporterVerified,
+        pendingRequests,
+        totalDevices,
+        dbStatus: {
+          isConnected: mongoose.connection.readyState === 1,
+          dbName: mongoose.connection.name
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error checking email config:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email configuration',
+      error: error.message
+    });
+  }
+});
 // ==================== STOCK MONITORING ENDPOINTS ====================
 
 app.post('/api/stock/check-now', async (req, res) => {
