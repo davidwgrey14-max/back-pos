@@ -22,6 +22,7 @@ let cachedDb = null;
 let models = {};
 let emailTransporter = null;
 let modelsInitialized = false;
+let emailInitialized = false;
 
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
 app.use(responseTime());
@@ -522,14 +523,19 @@ models.LoginHistory = LoginHistory;
 
 // ==================== STOCK MONITORING SYSTEM ====================
 
-// Send stock alert email
+// Send stock alert email - FIXED with better error handling
 const sendStockAlertEmail = async (products, alertType) => {
-  if (!emailTransporter) {
-    console.log('⚠️ Email service not configured - skipping stock alert');
-    return false;
-  }
-
   try {
+    // Ensure email transporter is initialized
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      await initializeEmail();
+      if (!emailTransporter) {
+        console.log('⚠️ Email service not configured - skipping stock alert');
+        return false;
+      }
+    }
+
     const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
 
     const subject = alertType === 'out_of_stock'
@@ -749,12 +755,16 @@ const connectDB = async () => {
   }
 };
 
-// ==================== EMAIL CONFIGURATION ====================
+// ==================== EMAIL CONFIGURATION - FIXED ====================
 
 const createEmailTransporter = () => {
   try {
-    const emailUser = process.env.EMAIL_USER || 'davidwgrey14@gmail.com';
-    const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASSWORD;
+
+    console.log('📧 Email configuration check:');
+    console.log('📧 EMAIL_USER exists:', !!emailUser);
+    console.log('📧 EMAIL_PASSWORD exists:', !!emailPass);
 
     if (!emailUser || !emailPass) {
       throw new Error('Email credentials not configured');
@@ -769,8 +779,8 @@ const createEmailTransporter = () => {
         user: emailUser,
         pass: emailPass,
       },
-      debug: false,
-      logger: false
+      debug: true,
+      logger: true
     });
 
     return transporter;
@@ -782,15 +792,21 @@ const createEmailTransporter = () => {
 
 const initializeEmail = async () => {
   try {
+    console.log('📧 Initializing email transporter...');
     emailTransporter = createEmailTransporter();
+    
     if (emailTransporter) {
+      console.log('📧 Verifying email transporter...');
       await emailTransporter.verify();
       console.log('✅ Email transporter is ready and verified');
+      emailInitialized = true;
       return true;
     }
+    emailInitialized = false;
     return false;
   } catch (error) {
     console.error('❌ Email configuration error:', error.message);
+    emailInitialized = false;
     return false;
   }
 };
@@ -1018,7 +1034,7 @@ app.use((req, res, next) => {
 app.use(compression());
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://pos-frontend-psi-teal.vercel.app'],
+  origin: ['https://pos-frontend-psi-teal.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
@@ -1596,39 +1612,53 @@ const generateSecureCode = () => {
 };
 
 const sendSecureCodeEmail = async (email, code) => {
-  if (!emailTransporter) {
-    throw new Error('Email service not configured');
-  }
+  try {
+    // Ensure email transporter is initialized
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing for secure code...');
+      await initializeEmail();
+      if (!emailTransporter) {
+        throw new Error('Email service not configured');
+      }
+    }
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER || 'davidwgrey14@gmail.com',
-    to: email,
-    subject: 'Your Secure Login Code - The Place Shop Management',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-          Pamela Bar Management - Secure Login
-        </h2>
-        <p>Hello,</p>
-        <p>Your secure login code for The place Shop Management System is:</p>
-        <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
-          ${code}
+    console.log(`📧 Sending secure code to ${email}`);
+
+    const mailOptions = {
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your Secure Login Code - The Place Shop Management',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+            ${process.env.APP_NAME || 'Shop Management'} - Secure Login
+          </h2>
+          <p>Hello,</p>
+          <p>Your secure login code for ${process.env.APP_NAME || 'The Place Shop Management System'} is:</p>
+          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
+            ${code}
+          </div>
+          <p style="color: #666; font-size: 14px;">
+            This code will expire in 15 minutes for security reasons.
+          </p>
+          <p style="color: #999; font-size: 12px;">
+            If you didn't request this code, please ignore this email or contact support if you're concerned.
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 11px;">
+            This is an automated message from ${process.env.APP_NAME || 'The Place Shop Management System'}.
+          </p>
         </div>
-        <p style="color: #666; font-size: 14px;">
-          This code will expire in 15 minutes for security reasons.
-        </p>
-        <p style="color: #999; font-size: 12px;">
-          If you didn't request this code, please ignore this email or contact support if you're concerned.
-        </p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="color: #888; font-size: 11px;">
-          This is an automated message from The place shop Management System.
-        </p>
-      </div>
-    `
-  };
+      `
+    };
 
-  await emailTransporter.sendMail(mailOptions);
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ Secure code sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send secure code to ${email}:`, error.message);
+    throw new Error('Failed to send secure code. Please try again later.');
+  }
 };
 
 const generateAuthToken = (userId, email, role) => {
@@ -1648,30 +1678,61 @@ const generateAuthToken = (userId, email, role) => {
   }
 };
 
-// ==================== EMAIL NOTIFICATIONS ====================
+// ==================== EMAIL NOTIFICATIONS - FIXED ====================
 
 const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
   try {
-    console.log('📧 Attempting to send device verification email...');
+    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
+    console.log('📧 User:', user.email, user.name);
+    console.log('📧 Device:', device.deviceName);
+    console.log('📧 Request ID:', verificationRequest._id);
 
+    // Ensure email transporter is initialized
     if (!emailTransporter) {
-      console.error('❌ Email transporter not configured');
+      console.log('🔄 Email transporter not initialized, initializing...');
+      await initializeEmail();
+      if (!emailTransporter) {
+        console.error('❌ Email transporter not configured - cannot send verification email');
+        console.log('ℹ️ Please check EMAIL_USER and EMAIL_PASSWORD environment variables');
+        return false;
+      }
+    }
+
+    // Verify transporter
+    try {
+      console.log('🔄 Verifying email transporter...');
+      await emailTransporter.verify();
+      console.log('✅ Email transporter verified successfully');
+    } catch (verifyError) {
+      console.error('❌ Email transporter verification failed:', verifyError.message);
       return false;
     }
 
+    // Find admin users
+    console.log('🔍 Finding admin users...');
     const adminEmails = await models.User.find({ role: 'admin' }).select('email name');
-    const emailList = adminEmails.map(a => a.email);
+    let emailList = adminEmails.map(a => a.email);
+    console.log(`📧 Found ${emailList.length} admin users:`, emailList);
 
     if (emailList.length === 0) {
       console.log('ℹ️ No admin users found, using default admin email');
-      emailList.push(process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com');
+      const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+      emailList.push(defaultAdmin);
+      console.log(`📧 Using default admin email: ${defaultAdmin}`);
     }
 
-    console.log(`📧 Sending verification email to ${emailList.length} admin(s)`);
+    // Also add the user's email to the list
+    if (user.email && !emailList.includes(user.email)) {
+      emailList.push(user.email);
+      console.log(`📧 Added user's email to notification list: ${user.email}`);
+    }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
     const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
     const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+
+    console.log('📧 Frontend URL:', frontendUrl);
+    console.log('📧 Approve Link:', approveLink);
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
@@ -1706,9 +1767,6 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
                 ❌ Reject Device
               </a>
             </div>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">
-              Or go to the Admin Dashboard > Device Verification Requests
-            </p>
           </div>
 
           <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; border-radius: 4px;">
@@ -1724,33 +1782,51 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
       </div>
     `;
 
+    // Send email to each recipient
+    let sentCount = 0;
+    console.log(`📧 Sending to ${emailList.length} recipients...`);
+
     for (const adminEmail of emailList) {
       try {
-        await emailTransporter.sendMail({
+        console.log(`📧 Attempting to send to: ${adminEmail}`);
+        const result = await emailTransporter.sendMail({
           from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
           to: adminEmail,
           subject: `🔐 New Device Login Request - ${user.name}`,
           html: html,
           priority: 'high'
         });
-        console.log(`✅ Verification email sent to ${adminEmail}`);
+        sentCount++;
+        console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
       } catch (error) {
         console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
+        if (error.response) {
+          console.error('📧 Email service response:', error.response);
+        }
       }
     }
 
-    return true;
+    console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
+    console.log(`📧 Successfully sent to ${sentCount} of ${emailList.length} recipients`);
+    console.log(`📧 =============================================`);
+
+    return sentCount > 0;
+
   } catch (error) {
     console.error('❌ Error in sendDeviceVerificationEmail:', error);
+    console.error('❌ Error stack:', error.stack);
     return false;
   }
 };
 
 const sendDeviceApprovedEmail = async (user, device) => {
   try {
-    if (!emailTransporter) return false;
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) return false;
+    }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
@@ -1791,7 +1867,10 @@ const sendDeviceApprovedEmail = async (user, device) => {
 
 const sendDeviceRejectedEmail = async (user, device, reason) => {
   try {
-    if (!emailTransporter) return false;
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) return false;
+    }
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
@@ -1845,6 +1924,7 @@ app.get('/api/health', (req, res) => {
     version: process.env.APP_VERSION || '1.0.0',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     email: emailTransporter ? 'configured' : 'disabled',
+    emailInitialized: emailInitialized,
     authentication: 'email-based-secure-code',
     deviceVerification: 'enabled',
     sessionManagement: 'enabled',
@@ -1858,6 +1938,112 @@ app.get('/api/health', (req, res) => {
     modelsInitialized: modelsInitialized,
     modelsAvailable: Object.keys(models).join(', ')
   });
+});
+
+// Debug email config endpoint
+app.get('/api/debug/email-config', async (req, res) => {
+  try {
+    const emailConfig = {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
+      emailUser: process.env.EMAIL_USER || 'Not set',
+      adminEmail: process.env.ADMIN_EMAIL || 'Not set',
+      transporterExists: !!emailTransporter,
+      emailInitialized: emailInitialized,
+      isDevelopment: process.env.NODE_ENV === 'development',
+      isVercel: !!process.env.VERCEL,
+      frontendUrl: process.env.FRONTEND_URL || 'Not set'
+    };
+
+    let transporterVerified = false;
+    if (emailTransporter) {
+      try {
+        await emailTransporter.verify();
+        transporterVerified = true;
+        console.log('✅ Email transporter verified successfully');
+      } catch (verifyError) {
+        console.error('❌ Transporter verification failed:', verifyError.message);
+        emailConfig.verifyError = verifyError.message;
+      }
+    }
+
+    const pendingRequests = await VerificationRequest.countDocuments({ status: 'pending' });
+    const totalDevices = await Device.countDocuments();
+
+    res.json({
+      success: true,
+      data: {
+        emailConfig,
+        transporterVerified,
+        pendingRequests,
+        totalDevices,
+        dbStatus: {
+          isConnected: mongoose.connection.readyState === 1,
+          dbName: mongoose.connection.name
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error checking email config:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email configuration',
+      error: error.message
+    });
+  }
+});
+
+// Test email sending endpoint
+app.post('/api/debug/test-email', async (req, res) => {
+  try {
+    console.log('📧 Testing email sending...');
+    
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      await initializeEmail();
+    }
+
+    if (!emailTransporter) {
+      return res.status(500).json({
+        success: false,
+        message: 'Email transporter not available'
+      });
+    }
+
+    await emailTransporter.verify();
+    console.log('✅ Transporter verified');
+
+    const testEmail = req.body.email || process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+    
+    const result = await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'} Test" <${process.env.EMAIL_USER}>`,
+      to: testEmail,
+      subject: 'Test Email from POS System',
+      html: `
+        <h1>Test Email</h1>
+        <p>This is a test email to verify that the email configuration is working.</p>
+        <p>Time: ${new Date().toLocaleString()}</p>
+        <p>If you received this, the email configuration is correct!</p>
+      `
+    });
+
+    console.log('✅ Test email sent:', result.messageId);
+
+    res.json({
+      success: true,
+      message: 'Test email sent successfully',
+      messageId: result.messageId,
+      sentTo: testEmail
+    });
+
+  } catch (error) {
+    console.error('❌ Test email failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Test email failed',
+      error: error.message
+    });
+  }
 });
 
 // ==================== STOCK MONITORING ENDPOINTS ====================
@@ -1974,7 +2160,9 @@ app.post('/api/auth/request-code',
         { upsert: true, new: true }
       );
 
+      // If email is not configured, return the code for development
       if (!emailTransporter) {
+        console.log('⚠️ Email service not configured - returning code for development');
         return res.json({
           success: true,
           message: 'Secure code generated (email service disabled)',
@@ -2180,7 +2368,9 @@ app.post('/api/auth/verify-code',
           });
           await verificationRequest.save();
 
-          await sendDeviceVerificationEmail(user, device, verificationRequest);
+          // Send verification email
+          const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
+          console.log(`📧 Device verification email sent: ${emailSent}`);
 
           return res.status(403).json({
             success: false,
@@ -2211,7 +2401,9 @@ app.post('/api/auth/verify-code',
             userAgent: deviceInfo.userAgent
           });
           await verificationRequest.save();
-          await sendDeviceVerificationEmail(user, device, verificationRequest);
+          
+          const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
+          console.log(`📧 Device verification email sent: ${emailSent}`);
         }
 
         return res.status(403).json({
