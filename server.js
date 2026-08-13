@@ -770,14 +770,20 @@ const createEmailTransporter = () => {
       throw new Error('Email credentials not configured');
     }
 
+    // Check if using Gmail
+    const isGmail = emailUser.includes('gmail.com');
+    
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      service: isGmail ? 'gmail' : undefined,
+      host: isGmail ? 'smtp.gmail.com' : process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.EMAIL_PORT) || 587,
+      secure: parseInt(process.env.EMAIL_PORT) === 465 || false,
       auth: {
         user: emailUser,
         pass: emailPass,
+      },
+      tls: {
+        rejectUnauthorized: false
       },
       debug: true,
       logger: true
@@ -815,7 +821,7 @@ const initializeEmail = async () => {
 
 const getDeviceInfo = (req) => {
   const userAgent = req.headers['user-agent'] || '';
-  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
+  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip || 'unknown';
 
   // Parse OS
   let os = 'Unknown';
@@ -1690,9 +1696,9 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
     // Ensure email transporter is initialized
     if (!emailTransporter) {
       console.log('🔄 Email transporter not initialized, initializing...');
-      await initializeEmail();
-      if (!emailTransporter) {
-        console.error('❌ Email transporter not configured - cannot send verification email');
+      const initialized = await initializeEmail();
+      if (!initialized || !emailTransporter) {
+        console.error('❌ Email transporter could not be initialized - cannot send verification email');
         console.log('ℹ️ Please check EMAIL_USER and EMAIL_PASSWORD environment variables');
         return false;
       }
@@ -1705,25 +1711,43 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
       console.log('✅ Email transporter verified successfully');
     } catch (verifyError) {
       console.error('❌ Email transporter verification failed:', verifyError.message);
-      return false;
+      // Try to reinitialize
+      console.log('🔄 Attempting to reinitialize email transporter...');
+      const reinit = await initializeEmail();
+      if (!reinit || !emailTransporter) {
+        console.error('❌ Failed to reinitialize email transporter');
+        return false;
+      }
+      try {
+        await emailTransporter.verify();
+        console.log('✅ Email transporter re-verified successfully');
+      } catch (reVerifyError) {
+        console.error('❌ Email transporter re-verification failed:', reVerifyError.message);
+        return false;
+      }
     }
 
     // Find admin users
     console.log('🔍 Finding admin users...');
-    const adminEmails = await models.User.find({ role: 'admin' }).select('email name');
-    let emailList = adminEmails.map(a => a.email);
-    console.log(`📧 Found ${emailList.length} admin users:`, emailList);
+    let adminEmails = [];
+    try {
+      const admins = await models.User.find({ role: 'admin' }).select('email name');
+      adminEmails = admins.map(a => a.email);
+      console.log(`📧 Found ${adminEmails.length} admin users:`, adminEmails);
+    } catch (error) {
+      console.error('❌ Error finding admin users:', error);
+    }
 
-    if (emailList.length === 0) {
+    if (adminEmails.length === 0) {
       console.log('ℹ️ No admin users found, using default admin email');
       const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-      emailList.push(defaultAdmin);
+      adminEmails.push(defaultAdmin);
       console.log(`📧 Using default admin email: ${defaultAdmin}`);
     }
 
-    // Also add the user's email to the list
-    if (user.email && !emailList.includes(user.email)) {
-      emailList.push(user.email);
+    // Also add the user's email to the list if it's not an admin
+    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
+      adminEmails.push(user.email);
       console.log(`📧 Added user's email to notification list: ${user.email}`);
     }
 
@@ -1744,13 +1768,13 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
           <p>A user is trying to log in from a new device. Please verify this request.</p>
 
           <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 15px 0;">
-            <p><strong>👤 User:</strong> ${user.name} (${user.email})</p>
+            <p><strong>👤 User:</strong> ${user.name || 'Unknown User'} (${user.email})</p>
             <p><strong>🔑 Role:</strong> ${user.role || 'Cashier'}</p>
-            <p><strong>💻 Device:</strong> ${device.deviceName}</p>
-            <p><strong>🖥️ OS:</strong> ${device.os} ${device.osVersion || ''}</p>
-            <p><strong>🌐 Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
-            <p><strong>📱 MAC Address:</strong> ${device.macAddress}</p>
-            <p><strong>🌍 IP Address:</strong> ${device.ipAddress}</p>
+            <p><strong>💻 Device:</strong> ${device.deviceName || 'Unknown Device'}</p>
+            <p><strong>🖥️ OS:</strong> ${device.os || 'Unknown'} ${device.osVersion || ''}</p>
+            <p><strong>🌐 Browser:</strong> ${device.browser || 'Unknown'} ${device.browserVersion || ''}</p>
+            <p><strong>📱 MAC Address:</strong> ${device.macAddress || 'Unknown'}</p>
+            <p><strong>🌍 IP Address:</strong> ${device.ipAddress || 'Unknown'}</p>
             <p><strong>📅 Request Time:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>⏰ Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
           </div>
@@ -1767,6 +1791,9 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
                 ❌ Reject Device
               </a>
             </div>
+            <p style="margin-top: 15px; color: #666; font-size: 14px;">
+              Or go to the Admin Dashboard > Device Verification Requests
+            </p>
           </div>
 
           <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; border-radius: 4px;">
@@ -1784,15 +1811,15 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
 
     // Send email to each recipient
     let sentCount = 0;
-    console.log(`📧 Sending to ${emailList.length} recipients...`);
+    console.log(`📧 Sending to ${adminEmails.length} recipients...`);
 
-    for (const adminEmail of emailList) {
+    for (const adminEmail of adminEmails) {
       try {
         console.log(`📧 Attempting to send to: ${adminEmail}`);
         const result = await emailTransporter.sendMail({
           from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
           to: adminEmail,
-          subject: `🔐 New Device Login Request - ${user.name}`,
+          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
           html: html,
           priority: 'high'
         });
@@ -1803,11 +1830,26 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
         if (error.response) {
           console.error('📧 Email service response:', error.response);
         }
+        // Try sending without the name if it failed
+        try {
+          console.log(`🔄 Retrying to ${adminEmail} without name in subject...`);
+          const result = await emailTransporter.sendMail({
+            from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
+            to: adminEmail,
+            subject: `🔐 New Device Login Request`,
+            html: html,
+            priority: 'high'
+          });
+          sentCount++;
+          console.log(`✅ Email sent to ${adminEmail} on retry:`, result.messageId);
+        } catch (retryError) {
+          console.error(`❌ Retry failed for ${adminEmail}:`, retryError.message);
+        }
       }
     }
 
     console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
-    console.log(`📧 Successfully sent to ${sentCount} of ${emailList.length} recipients`);
+    console.log(`📧 Successfully sent to ${sentCount} of ${adminEmails.length} recipients`);
     console.log(`📧 =============================================`);
 
     return sentCount > 0;
@@ -1956,14 +1998,15 @@ app.get('/api/debug/email-config', async (req, res) => {
     };
 
     let transporterVerified = false;
+    let verifyError = null;
     if (emailTransporter) {
       try {
         await emailTransporter.verify();
         transporterVerified = true;
         console.log('✅ Email transporter verified successfully');
-      } catch (verifyError) {
-        console.error('❌ Transporter verification failed:', verifyError.message);
-        emailConfig.verifyError = verifyError.message;
+      } catch (error) {
+        console.error('❌ Transporter verification failed:', error.message);
+        verifyError = error.message;
       }
     }
 
@@ -1975,6 +2018,7 @@ app.get('/api/debug/email-config', async (req, res) => {
       data: {
         emailConfig,
         transporterVerified,
+        verifyError,
         pendingRequests,
         totalDevices,
         dbStatus: {
@@ -2368,14 +2412,20 @@ app.post('/api/auth/verify-code',
           });
           await verificationRequest.save();
 
-          // Send verification email
+          // Send verification email - with improved error handling
+          console.log('📧 Attempting to send device verification email...');
           const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
           console.log(`📧 Device verification email sent: ${emailSent}`);
+          
+          if (!emailSent) {
+            console.log('⚠️ Failed to send verification email, but device request was created');
+            // Still proceed with the response, just log the error
+          }
 
           return res.status(403).json({
             success: false,
             requiresVerification: true,
-            message: 'New device detected. Please wait for admin approval.',
+            message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
             deviceInfo: {
               deviceName: device.deviceName,
               os: device.os,
@@ -2402,6 +2452,7 @@ app.post('/api/auth/verify-code',
           });
           await verificationRequest.save();
           
+          console.log('📧 Attempting to send device verification email for pending device...');
           const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
           console.log(`📧 Device verification email sent: ${emailSent}`);
         }
@@ -2409,7 +2460,7 @@ app.post('/api/auth/verify-code',
         return res.status(403).json({
           success: false,
           requiresVerification: true,
-          message: 'Device pending verification. Please wait for admin approval.',
+          message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
           deviceInfo: {
             deviceName: device.deviceName,
             os: device.os,
@@ -2708,12 +2759,15 @@ app.post('/api/auth/check-device', async (req, res) => {
       });
       await verificationRequest.save();
 
-      await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
+      // Send verification email
+      console.log('📧 Attempting to send device verification email from check-device...');
+      const emailSent = await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
+      console.log(`📧 Device verification email sent: ${emailSent}`);
 
       return res.json({
         success: false,
         requiresVerification: true,
-        message: 'New device detected. Please wait for admin approval.',
+        message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
         requestId: verificationRequest._id,
         deviceInfo: {
           deviceName: newDevice.deviceName,
@@ -2746,13 +2800,15 @@ app.post('/api/auth/check-device', async (req, res) => {
         });
         await newRequest.save();
 
-        await sendDeviceVerificationEmail(user, device, newRequest);
+        console.log('📧 Attempting to send device verification email for pending device...');
+        const emailSent = await sendDeviceVerificationEmail(user, device, newRequest);
+        console.log(`📧 Device verification email sent: ${emailSent}`);
       }
 
       return res.json({
         success: false,
         requiresVerification: true,
-        message: 'Device pending verification. Please wait for admin approval.',
+        message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
         deviceInfo: {
           deviceName: device.deviceName,
           os: device.os,
