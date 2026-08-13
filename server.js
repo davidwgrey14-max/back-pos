@@ -1018,7 +1018,7 @@ app.use((req, res, next) => {
 app.use(compression());
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://pos-frontend-psi-teal.vercel.app'],
+  origin: ['https://pos-frontend-psi-teal.vercel.app', 'https://pos-frontend-psi-teal.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
@@ -1669,7 +1669,7 @@ const sendDeviceVerificationEmail = async (user, device, verificationRequest) =>
 
     console.log(`📧 Sending verification email to ${emailList.length} admin(s)`);
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
     const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
     const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
 
@@ -1750,7 +1750,7 @@ const sendDeviceApprovedEmail = async (user, device) => {
   try {
     if (!emailTransporter) return false;
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
