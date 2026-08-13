@@ -11,5 +11,10 @@
       "src": "/(.*)",
       "dest": "server.js"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "NPM_FLAGS": "--legacy-peer-deps"
+    }
+  }
 }
