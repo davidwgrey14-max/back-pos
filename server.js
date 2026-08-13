@@ -1685,34 +1685,20 @@ const generateAuthToken = (userId, email, role) => {
 };
 
 // ==================== EMAIL NOTIFICATIONS - FIXED ====================
-
 const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
   try {
-    // Replace the email sending part with this detailed logging
-console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
-console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
-console.log('📧 To:', adminEmails.join(', '));
-console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
+    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
+    
+    // Ensure email transporter is initialized
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      const initialized = await initializeEmail();
+      if (!initialized || !emailTransporter) {
+        console.error('❌ Email transporter could not be initialized');
+        return false;
+      }
+    }
 
-try {
-  const result = await emailTransporter.sendMail({
-    from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
-    to: adminEmails.join(', '), // Send to ALL admins at once
-    subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
-    html: html,
-    priority: 'high'
-  });
-  console.log('✅ Email sent successfully!');
-  console.log('📧 Message ID:', result.messageId);
-  console.log('📧 Response:', result.response);
-  return true;
-} catch (error) {
-  console.error('❌ Email sending failed with error:', error);
-  console.error('❌ Error code:', error.code);
-  console.error('❌ Error command:', error.command);
-  console.error('❌ Error response:', error.response);
-  return false;
-}
     // Verify transporter
     try {
       console.log('🔄 Verifying email transporter...');
@@ -1720,23 +1706,10 @@ try {
       console.log('✅ Email transporter verified successfully');
     } catch (verifyError) {
       console.error('❌ Email transporter verification failed:', verifyError.message);
-      // Try to reinitialize
-      console.log('🔄 Attempting to reinitialize email transporter...');
-      const reinit = await initializeEmail();
-      if (!reinit || !emailTransporter) {
-        console.error('❌ Failed to reinitialize email transporter');
-        return false;
-      }
-      try {
-        await emailTransporter.verify();
-        console.log('✅ Email transporter re-verified successfully');
-      } catch (reVerifyError) {
-        console.error('❌ Email transporter re-verification failed:', reVerifyError.message);
-        return false;
-      }
+      return false;
     }
 
-    // Find admin users
+    // Find admin users - THIS MUST COME BEFORE USING adminEmails
     console.log('🔍 Finding admin users...');
     let adminEmails = [];
     try {
@@ -1754,18 +1727,14 @@ try {
       console.log(`📧 Using default admin email: ${defaultAdmin}`);
     }
 
-    // Also add the user's email to the list if it's not an admin
-    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
-      adminEmails.push(user.email);
-      console.log(`📧 Added user's email to notification list: ${user.email}`);
-    }
+    // NOW we can use adminEmails safely
+    console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
+    console.log('📧 To:', adminEmails.join(', '));
+    console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
     const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
     const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
-
-    console.log('📧 Frontend URL:', frontendUrl);
-    console.log('📧 Approve Link:', approveLink);
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
@@ -1836,24 +1805,6 @@ try {
         console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
       } catch (error) {
         console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
-        if (error.response) {
-          console.error('📧 Email service response:', error.response);
-        }
-        // Try sending without the name if it failed
-        try {
-          console.log(`🔄 Retrying to ${adminEmail} without name in subject...`);
-          const result = await emailTransporter.sendMail({
-            from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
-            to: adminEmail,
-            subject: `🔐 New Device Login Request`,
-            html: html,
-            priority: 'high'
-          });
-          sentCount++;
-          console.log(`✅ Email sent to ${adminEmail} on retry:`, result.messageId);
-        } catch (retryError) {
-          console.error(`❌ Retry failed for ${adminEmail}:`, retryError.message);
-        }
       }
     }
 
@@ -1869,100 +1820,6 @@ try {
     return false;
   }
 };
-
-const sendDeviceApprovedEmail = async (user, device) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) return false;
-    }
-
-    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: #10B981; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">✅ Device Approved</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <p>Dear ${user.name},</p>
-          <p>Your device has been <strong>approved</strong> for access to ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <p><strong>Device:</strong> ${device.deviceName}</p>
-            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
-            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
-            <p><strong>MAC Address:</strong> ${device.macAddress}</p>
-          </div>
-          <p>You can now log in from this device.</p>
-          <p><a href="${frontendUrl}/login" style="background: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Log In Now</a></p>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-        </div>
-      </div>
-    `;
-
-    await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: '✅ Device Approved for Login',
-      html: html
-    });
-
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send device approved email:', error);
-    return false;
-  }
-};
-
-const sendDeviceRejectedEmail = async (user, device, reason) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) return false;
-    }
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: #EF4444; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">❌ Device Rejected</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <p>Dear ${user.name},</p>
-          <p>Your device request has been <strong>rejected</strong> by an administrator.</p>
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <p><strong>Device:</strong> ${device.deviceName}</p>
-            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
-            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
-          </div>
-          ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 15px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400E;">
-              <strong>⚠️ Security Alert:</strong> If you didn't request this access, please contact your administrator immediately.
-            </p>
-          </div>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-        </div>
-      </div>
-    `;
-
-    await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: '❌ Device Rejected for Login',
-      html: html
-    });
-
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send device rejected email:', error);
-    return false;
-  }
-};
-
 // ==================== API ROUTES ====================
 
 // Health check
