@@ -16,6 +16,9 @@ const ALLOWED_ORIGINS = [
   process.env.CLIENT_URL
 ].filter(Boolean);
 
+
+
+
 // ==================== CORS MIDDLEWARE - VERCEL COMPATIBLE ====================
 
 /**
