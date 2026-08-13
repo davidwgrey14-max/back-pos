@@ -1688,22 +1688,31 @@ const generateAuthToken = (userId, email, role) => {
 
 const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
   try {
-    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
-    console.log('📧 User:', user.email, user.name);
-    console.log('📧 Device:', device.deviceName);
-    console.log('📧 Request ID:', verificationRequest._id);
+    // Replace the email sending part with this detailed logging
+console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
+console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
+console.log('📧 To:', adminEmails.join(', '));
+console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
 
-    // Ensure email transporter is initialized
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      const initialized = await initializeEmail();
-      if (!initialized || !emailTransporter) {
-        console.error('❌ Email transporter could not be initialized - cannot send verification email');
-        console.log('ℹ️ Please check EMAIL_USER and EMAIL_PASSWORD environment variables');
-        return false;
-      }
-    }
-
+try {
+  const result = await emailTransporter.sendMail({
+    from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
+    to: adminEmails.join(', '), // Send to ALL admins at once
+    subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
+    html: html,
+    priority: 'high'
+  });
+  console.log('✅ Email sent successfully!');
+  console.log('📧 Message ID:', result.messageId);
+  console.log('📧 Response:', result.response);
+  return true;
+} catch (error) {
+  console.error('❌ Email sending failed with error:', error);
+  console.error('❌ Error code:', error.code);
+  console.error('❌ Error command:', error.command);
+  console.error('❌ Error response:', error.response);
+  return false;
+}
     // Verify transporter
     try {
       console.log('🔄 Verifying email transporter...');
