@@ -1,4 +1,6 @@
 // server.js - Complete with Device Verification, Session Management & Secure Code Auth
+// Professional Grade - Production Ready
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -14,17 +16,22 @@ const responseTime = require('response-time');
 const crypto = require('crypto');
 require('dotenv').config();
 
+// ==================== INITIALIZATION ====================
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// ==================== CACHED CONNECTION FOR SERVERLESS ====================
+// ==================== STATE MANAGEMENT ====================
+
 let cachedDb = null;
 let models = {};
 let emailTransporter = null;
 let modelsInitialized = false;
 let emailInitialized = false;
+let dbInitialized = false;
 
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
+
 app.use(responseTime());
 mongoose.set('debug', false);
 
@@ -34,20 +41,20 @@ app.use('/api/transactions/combined', (req, res, next) => {
   next();
 });
 
-// ==================== ENHANCED MODELS ====================
+// ==================== DATABASE SCHEMAS ====================
 
 const createModels = () => {
   console.log('🔧 Creating enhanced models...');
 
   // Product Schema
   const productSchema = new mongoose.Schema({
-    name: { type: String, required: true },
+    name: { type: String, required: true, trim: true },
     category: { type: String, default: 'Uncategorized' },
-    buyingPrice: { type: Number, default: 0 },
-    minSellingPrice: { type: Number, default: 0 },
-    currentStock: { type: Number, default: 0 },
-    minStockLevel: { type: Number, default: 5 },
-    barcode: String,
+    buyingPrice: { type: Number, default: 0, min: 0 },
+    minSellingPrice: { type: Number, default: 0, min: 0 },
+    currentStock: { type: Number, default: 0, min: 0 },
+    minStockLevel: { type: Number, default: 5, min: 0 },
+    barcode: { type: String, unique: true, sparse: true },
     shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     shopId: String,
     shopName: String,
@@ -60,25 +67,25 @@ const createModels = () => {
 
   // Shop Schema
   const shopSchema = new mongoose.Schema({
-    name: { type: String, required: true },
+    name: { type: String, required: true, trim: true },
     location: String,
     manager: String,
     contact: String,
-    email: String,
+    email: { type: String, lowercase: true, trim: true },
     type: { type: String, default: 'retail' },
-    status: { type: String, default: 'active' },
+    status: { type: String, default: 'active', enum: ['active', 'inactive'] },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
 
   // Cashier Schema
   const cashierSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phone: String,
-    password: String,
-    role: { type: String, default: 'cashier' },
-    status: { type: String, default: 'active' },
+    password: { type: String, select: false },
+    role: { type: String, default: 'cashier', enum: ['cashier', 'admin'] },
+    status: { type: String, default: 'active', enum: ['active', 'inactive'] },
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     shopName: String,
     lastLogin: Date,
@@ -88,8 +95,8 @@ const createModels = () => {
 
   // Expense Schema
   const expenseSchema = new mongoose.Schema({
-    description: { type: String, required: true },
-    amount: { type: Number, required: true },
+    description: { type: String, required: true, trim: true },
+    amount: { type: Number, required: true, min: 0 },
     category: { type: String, default: 'General' },
     date: { type: Date, default: Date.now },
     shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
@@ -99,7 +106,7 @@ const createModels = () => {
     paymentMethod: { type: String, default: 'cash' },
     referenceNumber: String,
     notes: String,
-    status: { type: String, default: 'completed' },
+    status: { type: String, default: 'completed', enum: ['pending', 'completed', 'cancelled'] },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -107,22 +114,22 @@ const createModels = () => {
   // Transaction Schema
   const transactionSchema = new mongoose.Schema({
     transactionNumber: { type: String, required: true, unique: true },
-    totalAmount: { type: Number, required: true },
-    cost: { type: Number, default: 0 },
+    totalAmount: { type: Number, required: true, min: 0 },
+    cost: { type: Number, default: 0, min: 0 },
     profit: { type: Number, default: 0 },
     profitMargin: { type: Number, default: 0 },
     items: [{
       productName: String,
       productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
-      quantity: { type: Number, default: 1 },
-      price: Number,
-      totalPrice: Number,
-      buyingPrice: Number,
-      cost: Number,
+      quantity: { type: Number, default: 1, min: 0 },
+      price: { type: Number, min: 0 },
+      totalPrice: { type: Number, min: 0 },
+      buyingPrice: { type: Number, min: 0 },
+      cost: { type: Number, min: 0 },
       profit: Number,
       profitMargin: Number
     }],
-    itemsCount: { type: Number, default: 0 },
+    itemsCount: { type: Number, default: 0, min: 0 },
     paymentMethod: { type: String, default: 'cash' },
     customerName: { type: String, default: 'Walk-in Customer' },
     customerPhone: String,
@@ -132,27 +139,27 @@ const createModels = () => {
     shopId: String,
     shopName: String,
     saleDate: { type: Date, default: Date.now },
-    status: { type: String, default: 'completed' },
+    status: { type: String, default: 'completed', enum: ['pending', 'completed', 'cancelled', 'credit'] },
     isCreditTransaction: { type: Boolean, default: false },
     creditStatus: { type: String, enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
-    recognizedRevenue: { type: Number, default: 0 },
-    outstandingRevenue: { type: Number, default: 0 },
-    amountPaid: { type: Number, default: 0 },
+    recognizedRevenue: { type: Number, default: 0, min: 0 },
+    outstandingRevenue: { type: Number, default: 0, min: 0 },
+    amountPaid: { type: Number, default: 0, min: 0 },
     dueDate: Date,
     creditShopName: String,
     creditShopId: String,
     shopClassification: String,
     paymentSplit: {
-      cash: { type: Number, default: 0 },
-      bank_mpesa: { type: Number, default: 0 },
-      credit: { type: Number, default: 0 }
+      cash: { type: Number, default: 0, min: 0 },
+      bank_mpesa: { type: Number, default: 0, min: 0 },
+      credit: { type: Number, default: 0, min: 0 }
     },
-    immediateRevenue: { type: Number, default: 0 },
-    upfrontPaymentAmount: { type: Number, default: 0 },
+    immediateRevenue: { type: Number, default: 0, min: 0 },
+    upfrontPaymentAmount: { type: Number, default: 0, min: 0 },
     upfrontPaymentMethod: String,
     upfrontPaymentSplit: {
-      cash: { type: Number, default: 0 },
-      bank_mpesa: { type: Number, default: 0 }
+      cash: { type: Number, default: 0, min: 0 },
+      bank_mpesa: { type: Number, default: 0, min: 0 }
     },
     isCreditPayment: { type: Boolean, default: false },
     originalCreditId: { type: mongoose.Schema.Types.ObjectId, ref: 'Credit' },
@@ -163,16 +170,16 @@ const createModels = () => {
   // Credit Schema
   const creditSchema = new mongoose.Schema({
     transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
-    customerName: { type: String, required: true },
+    customerName: { type: String, required: true, trim: true },
     customerPhone: String,
-    customerEmail: String,
-    totalAmount: { type: Number, required: true },
-    amountPaid: { type: Number, default: 0 },
-    balanceDue: { type: Number, required: true },
+    customerEmail: { type: String, lowercase: true, trim: true },
+    totalAmount: { type: Number, required: true, min: 0 },
+    amountPaid: { type: Number, default: 0, min: 0 },
+    balanceDue: { type: Number, required: true, min: 0 },
     dueDate: { type: Date, required: true },
     status: { type: String, default: 'pending', enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
     paymentHistory: [{
-      amount: Number,
+      amount: { type: Number, min: 0 },
       paymentDate: { type: Date, default: Date.now },
       paymentMethod: String,
       recordedBy: String,
@@ -189,22 +196,22 @@ const createModels = () => {
     cashierName: String,
     recordedBy: String,
     notes: String,
-    upfrontPaymentAmount: { type: Number, default: 0 },
+    upfrontPaymentAmount: { type: Number, default: 0, min: 0 },
     upfrontPaymentMethod: String,
     upfrontPaymentSplit: {
-      cash: { type: Number, default: 0 },
-      bank_mpesa: { type: Number, default: 0 }
+      cash: { type: Number, default: 0, min: 0 },
+      bank_mpesa: { type: Number, default: 0, min: 0 }
     },
-    immediateRevenue: { type: Number, default: 0 },
+    immediateRevenue: { type: Number, default: 0, min: 0 },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
 
   // User Schema
   const userSchema = new mongoose.Schema({
-    email: { type: String, required: true, unique: true },
-    name: { type: String, required: true },
-    role: { type: String, default: 'admin' },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    role: { type: String, default: 'admin', enum: ['admin', 'cashier'] },
     isActive: { type: Boolean, default: true },
     lastLogin: Date,
     createdAt: { type: Date, default: Date.now },
@@ -213,15 +220,85 @@ const createModels = () => {
 
   // Secure Code Schema
   const secureCodeSchema = new mongoose.Schema({
-    email: { type: String, required: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
     code: { type: String, required: true },
     expiresAt: { type: Date, required: true },
-    attempts: { type: Number, default: 0 },
+    attempts: { type: Number, default: 0, min: 0 },
     used: { type: Boolean, default: false }
   });
 
   secureCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+  // Device Schema
+  const deviceSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    deviceId: { type: String, required: true, unique: true },
+    deviceName: { type: String, required: true },
+    deviceType: { type: String, enum: ['desktop', 'laptop', 'mobile', 'tablet', 'unknown'] },
+    os: String,
+    osVersion: String,
+    browser: String,
+    browserVersion: String,
+    macAddress: String,
+    ipAddress: String,
+    lastLogin: { type: Date, default: Date.now },
+    firstLogin: { type: Date, default: Date.now },
+    isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    loginCount: { type: Number, default: 0, min: 0 },
+    lastActivity: { type: Date, default: Date.now },
+    sessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+  });
+
+  // Session Schema
+  const sessionSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+    token: { type: String, required: true, unique: true },
+    lastActivity: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    isActive: { type: Boolean, default: true },
+    logoutReason: { type: String, enum: ['manual', 'inactivity', 'device_verification', 'admin_terminated'] },
+    ipAddress: String,
+    userAgent: String,
+    createdAt: { type: Date, default: Date.now }
+  });
+
+  // Verification Request Schema
+  const verificationRequestSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+    requestToken: { type: String, required: true, unique: true },
+    expiresAt: { type: Date, required: true },
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approvedAt: Date,
+    rejectionReason: String,
+    ipAddress: String,
+    userAgent: String,
+    createdAt: { type: Date, default: Date.now }
+  });
+
+  // Login History Schema
+  const loginHistorySchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    email: String,
+    role: String,
+    success: { type: Boolean, default: false },
+    ipAddress: String,
+    userAgent: String,
+    deviceId: String,
+    macAddress: String,
+    os: String,
+    browser: String,
+    location: String,
+    failureReason: String,
+    timestamp: { type: Date, default: Date.now }
+  });
+
+  // Register models
   const newModels = {
     Product: mongoose.models.Product || mongoose.model('Product', productSchema),
     Shop: mongoose.models.Shop || mongoose.model('Shop', shopSchema),
@@ -230,7 +307,11 @@ const createModels = () => {
     Transaction: mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema),
     Credit: mongoose.models.Credit || mongoose.model('Credit', creditSchema),
     User: mongoose.models.User || mongoose.model('User', userSchema),
-    SecureCode: mongoose.models.SecureCode || mongoose.model('SecureCode', secureCodeSchema)
+    SecureCode: mongoose.models.SecureCode || mongoose.model('SecureCode', secureCodeSchema),
+    Device: mongoose.models.Device || mongoose.model('Device', deviceSchema),
+    Session: mongoose.models.Session || mongoose.model('Session', sessionSchema),
+    VerificationRequest: mongoose.models.VerificationRequest || mongoose.model('VerificationRequest', verificationRequestSchema),
+    LoginHistory: mongoose.models.LoginHistory || mongoose.model('LoginHistory', loginHistorySchema)
   };
 
   console.log('✅ All enhanced models created successfully');
@@ -240,18 +321,19 @@ const createModels = () => {
   return newModels;
 };
 
-// Initialize models immediately (before connection)
+// Initialize models immediately
 const initializeModelsImmediately = () => {
   console.log('🔧 Initializing models immediately...');
+  
   const schemas = {
     Product: new mongoose.Schema({
-      name: { type: String, required: true },
+      name: { type: String, required: true, trim: true },
       category: { type: String, default: 'Uncategorized' },
-      buyingPrice: { type: Number, default: 0 },
-      minSellingPrice: { type: Number, default: 0 },
-      currentStock: { type: Number, default: 0 },
-      minStockLevel: { type: Number, default: 5 },
-      barcode: String,
+      buyingPrice: { type: Number, default: 0, min: 0 },
+      minSellingPrice: { type: Number, default: 0, min: 0 },
+      currentStock: { type: Number, default: 0, min: 0 },
+      minStockLevel: { type: Number, default: 5, min: 0 },
+      barcode: { type: String, unique: true, sparse: true },
       shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
       shopId: String,
       shopName: String,
@@ -262,23 +344,23 @@ const initializeModelsImmediately = () => {
       updatedAt: { type: Date, default: Date.now }
     }),
     Shop: new mongoose.Schema({
-      name: { type: String, required: true },
+      name: { type: String, required: true, trim: true },
       location: String,
       manager: String,
       contact: String,
-      email: String,
+      email: { type: String, lowercase: true, trim: true },
       type: { type: String, default: 'retail' },
-      status: { type: String, default: 'active' },
+      status: { type: String, default: 'active', enum: ['active', 'inactive'] },
       createdAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now }
     }),
     Cashier: new mongoose.Schema({
-      name: { type: String, required: true },
-      email: { type: String, required: true, unique: true },
+      name: { type: String, required: true, trim: true },
+      email: { type: String, required: true, unique: true, lowercase: true, trim: true },
       phone: String,
-      password: String,
-      role: { type: String, default: 'cashier' },
-      status: { type: String, default: 'active' },
+      password: { type: String, select: false },
+      role: { type: String, default: 'cashier', enum: ['cashier', 'admin'] },
+      status: { type: String, default: 'active', enum: ['active', 'inactive'] },
       shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
       shopName: String,
       lastLogin: Date,
@@ -286,8 +368,8 @@ const initializeModelsImmediately = () => {
       updatedAt: { type: Date, default: Date.now }
     }),
     Expense: new mongoose.Schema({
-      description: { type: String, required: true },
-      amount: { type: Number, required: true },
+      description: { type: String, required: true, trim: true },
+      amount: { type: Number, required: true, min: 0 },
       category: { type: String, default: 'General' },
       date: { type: Date, default: Date.now },
       shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
@@ -297,28 +379,28 @@ const initializeModelsImmediately = () => {
       paymentMethod: { type: String, default: 'cash' },
       referenceNumber: String,
       notes: String,
-      status: { type: String, default: 'completed' },
+      status: { type: String, default: 'completed', enum: ['pending', 'completed', 'cancelled'] },
       createdAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now }
     }),
     Transaction: new mongoose.Schema({
       transactionNumber: { type: String, required: true, unique: true },
-      totalAmount: { type: Number, required: true },
-      cost: { type: Number, default: 0 },
+      totalAmount: { type: Number, required: true, min: 0 },
+      cost: { type: Number, default: 0, min: 0 },
       profit: { type: Number, default: 0 },
       profitMargin: { type: Number, default: 0 },
       items: [{
         productName: String,
         productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
-        quantity: { type: Number, default: 1 },
-        price: Number,
-        totalPrice: Number,
-        buyingPrice: Number,
-        cost: Number,
+        quantity: { type: Number, default: 1, min: 0 },
+        price: { type: Number, min: 0 },
+        totalPrice: { type: Number, min: 0 },
+        buyingPrice: { type: Number, min: 0 },
+        cost: { type: Number, min: 0 },
         profit: Number,
         profitMargin: Number
       }],
-      itemsCount: { type: Number, default: 0 },
+      itemsCount: { type: Number, default: 0, min: 0 },
       paymentMethod: { type: String, default: 'cash' },
       customerName: { type: String, default: 'Walk-in Customer' },
       customerPhone: String,
@@ -328,27 +410,27 @@ const initializeModelsImmediately = () => {
       shopId: String,
       shopName: String,
       saleDate: { type: Date, default: Date.now },
-      status: { type: String, default: 'completed' },
+      status: { type: String, default: 'completed', enum: ['pending', 'completed', 'cancelled', 'credit'] },
       isCreditTransaction: { type: Boolean, default: false },
       creditStatus: { type: String, enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
-      recognizedRevenue: { type: Number, default: 0 },
-      outstandingRevenue: { type: Number, default: 0 },
-      amountPaid: { type: Number, default: 0 },
+      recognizedRevenue: { type: Number, default: 0, min: 0 },
+      outstandingRevenue: { type: Number, default: 0, min: 0 },
+      amountPaid: { type: Number, default: 0, min: 0 },
       dueDate: Date,
       creditShopName: String,
       creditShopId: String,
       shopClassification: String,
       paymentSplit: {
-        cash: { type: Number, default: 0 },
-        bank_mpesa: { type: Number, default: 0 },
-        credit: { type: Number, default: 0 }
+        cash: { type: Number, default: 0, min: 0 },
+        bank_mpesa: { type: Number, default: 0, min: 0 },
+        credit: { type: Number, default: 0, min: 0 }
       },
-      immediateRevenue: { type: Number, default: 0 },
-      upfrontPaymentAmount: { type: Number, default: 0 },
+      immediateRevenue: { type: Number, default: 0, min: 0 },
+      upfrontPaymentAmount: { type: Number, default: 0, min: 0 },
       upfrontPaymentMethod: String,
       upfrontPaymentSplit: {
-        cash: { type: Number, default: 0 },
-        bank_mpesa: { type: Number, default: 0 }
+        cash: { type: Number, default: 0, min: 0 },
+        bank_mpesa: { type: Number, default: 0, min: 0 }
       },
       isCreditPayment: { type: Boolean, default: false },
       originalCreditId: { type: mongoose.Schema.Types.ObjectId, ref: 'Credit' },
@@ -357,16 +439,16 @@ const initializeModelsImmediately = () => {
     }),
     Credit: new mongoose.Schema({
       transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
-      customerName: { type: String, required: true },
+      customerName: { type: String, required: true, trim: true },
       customerPhone: String,
-      customerEmail: String,
-      totalAmount: { type: Number, required: true },
-      amountPaid: { type: Number, default: 0 },
-      balanceDue: { type: Number, required: true },
+      customerEmail: { type: String, lowercase: true, trim: true },
+      totalAmount: { type: Number, required: true, min: 0 },
+      amountPaid: { type: Number, default: 0, min: 0 },
+      balanceDue: { type: Number, required: true, min: 0 },
       dueDate: { type: Date, required: true },
       status: { type: String, default: 'pending', enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
       paymentHistory: [{
-        amount: Number,
+        amount: { type: Number, min: 0 },
         paymentDate: { type: Date, default: Date.now },
         paymentMethod: String,
         recordedBy: String,
@@ -383,31 +465,92 @@ const initializeModelsImmediately = () => {
       cashierName: String,
       recordedBy: String,
       notes: String,
-      upfrontPaymentAmount: { type: Number, default: 0 },
+      upfrontPaymentAmount: { type: Number, default: 0, min: 0 },
       upfrontPaymentMethod: String,
       upfrontPaymentSplit: {
-        cash: { type: Number, default: 0 },
-        bank_mpesa: { type: Number, default: 0 }
+        cash: { type: Number, default: 0, min: 0 },
+        bank_mpesa: { type: Number, default: 0, min: 0 }
       },
-      immediateRevenue: { type: Number, default: 0 },
+      immediateRevenue: { type: Number, default: 0, min: 0 },
       createdAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now }
     }),
     User: new mongoose.Schema({
-      email: { type: String, required: true, unique: true },
-      name: { type: String, required: true },
-      role: { type: String, default: 'admin' },
+      email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+      name: { type: String, required: true, trim: true },
+      role: { type: String, default: 'admin', enum: ['admin', 'cashier'] },
       isActive: { type: Boolean, default: true },
       lastLogin: Date,
       createdAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now }
     }),
     SecureCode: new mongoose.Schema({
-      email: { type: String, required: true },
+      email: { type: String, required: true, lowercase: true, trim: true },
       code: { type: String, required: true },
       expiresAt: { type: Date, required: true },
-      attempts: { type: Number, default: 0 },
+      attempts: { type: Number, default: 0, min: 0 },
       used: { type: Boolean, default: false }
+    }),
+    Device: new mongoose.Schema({
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      deviceId: { type: String, required: true, unique: true },
+      deviceName: { type: String, required: true },
+      deviceType: { type: String, enum: ['desktop', 'laptop', 'mobile', 'tablet', 'unknown'] },
+      os: String,
+      osVersion: String,
+      browser: String,
+      browserVersion: String,
+      macAddress: String,
+      ipAddress: String,
+      lastLogin: { type: Date, default: Date.now },
+      firstLogin: { type: Date, default: Date.now },
+      isVerified: { type: Boolean, default: false },
+      isActive: { type: Boolean, default: true },
+      loginCount: { type: Number, default: 0, min: 0 },
+      lastActivity: { type: Date, default: Date.now },
+      sessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Session: new mongoose.Schema({
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+      token: { type: String, required: true, unique: true },
+      lastActivity: { type: Date, default: Date.now },
+      expiresAt: { type: Date, required: true },
+      isActive: { type: Boolean, default: true },
+      logoutReason: { type: String, enum: ['manual', 'inactivity', 'device_verification', 'admin_terminated'] },
+      ipAddress: String,
+      userAgent: String,
+      createdAt: { type: Date, default: Date.now }
+    }),
+    VerificationRequest: new mongoose.Schema({
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+      status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+      requestToken: { type: String, required: true, unique: true },
+      expiresAt: { type: Date, required: true },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      approvedAt: Date,
+      rejectionReason: String,
+      ipAddress: String,
+      userAgent: String,
+      createdAt: { type: Date, default: Date.now }
+    }),
+    LoginHistory: new mongoose.Schema({
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      email: String,
+      role: String,
+      success: { type: Boolean, default: false },
+      ipAddress: String,
+      userAgent: String,
+      deviceId: String,
+      macAddress: String,
+      os: String,
+      browser: String,
+      location: String,
+      failureReason: String,
+      timestamp: { type: Date, default: Date.now }
     })
   };
 
@@ -428,7 +571,11 @@ const initializeModelsImmediately = () => {
     Transaction: mongoose.model('Transaction'),
     Credit: mongoose.model('Credit'),
     User: mongoose.model('User'),
-    SecureCode: mongoose.model('SecureCode')
+    SecureCode: mongoose.model('SecureCode'),
+    Device: mongoose.model('Device'),
+    Session: mongoose.model('Session'),
+    VerificationRequest: mongoose.model('VerificationRequest'),
+    LoginHistory: mongoose.model('LoginHistory')
   };
 
   modelsInitialized = true;
@@ -438,274 +585,7 @@ const initializeModelsImmediately = () => {
 // Initialize models immediately
 initializeModelsImmediately();
 
-// ==================== DEVICE AND SESSION SCHEMAS ====================
-
-// Device Schema - Track all devices that have logged in
-const deviceSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: String, required: true, unique: true },
-  deviceName: { type: String, required: true },
-  deviceType: { type: String, enum: ['desktop', 'laptop', 'mobile', 'tablet', 'unknown'] },
-  os: { type: String },
-  osVersion: { type: String },
-  browser: { type: String },
-  browserVersion: { type: String },
-  macAddress: { type: String },
-  ipAddress: { type: String },
-  lastLogin: { type: Date, default: Date.now },
-  firstLogin: { type: Date, default: Date.now },
-  isVerified: { type: Boolean, default: false },
-  isActive: { type: Boolean, default: true },
-  loginCount: { type: Number, default: 0 },
-  lastActivity: { type: Date, default: Date.now },
-  sessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-
-// Session Schema - Track active sessions with inactivity
-const sessionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
-  token: { type: String, required: true, unique: true },
-  lastActivity: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true },
-  isActive: { type: Boolean, default: true },
-  logoutReason: { type: String, enum: ['manual', 'inactivity', 'device_verification', 'admin_terminated'] },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Verification Request Schema - For new device approvals
-const verificationRequestSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
-  requestToken: { type: String, required: true, unique: true },
-  expiresAt: { type: Date, required: true },
-  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  approvedAt: { type: Date },
-  rejectionReason: { type: String },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Login History Schema - Track all login attempts
-const loginHistorySchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  email: { type: String },
-  role: { type: String },
-  success: { type: Boolean, default: false },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  deviceId: { type: String },
-  macAddress: { type: String },
-  os: { type: String },
-  browser: { type: String },
-  location: { type: String },
-  failureReason: { type: String },
-  timestamp: { type: Date, default: Date.now }
-});
-
-// Register the new models
-const Device = mongoose.models.Device || mongoose.model('Device', deviceSchema);
-const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
-const VerificationRequest = mongoose.models.VerificationRequest || mongoose.model('VerificationRequest', verificationRequestSchema);
-const LoginHistory = mongoose.models.LoginHistory || mongoose.model('LoginHistory', loginHistorySchema);
-
-// Add to models object for easy access
-models.Device = Device;
-models.Session = Session;
-models.VerificationRequest = VerificationRequest;
-models.LoginHistory = LoginHistory;
-
-// ==================== STOCK MONITORING SYSTEM ====================
-
-// Send stock alert email - FIXED with better error handling
-const sendStockAlertEmail = async (products, alertType) => {
-  try {
-    // Ensure email transporter is initialized
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      await initializeEmail();
-      if (!emailTransporter) {
-        console.log('⚠️ Email service not configured - skipping stock alert');
-        return false;
-      }
-    }
-
-    const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-
-    const subject = alertType === 'out_of_stock'
-      ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
-      : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
-
-    const productList = products.map(product => `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.name}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.category || 'Uncategorized'}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.currentStock}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.minStockLevel || 5}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.shopName || 'Unknown Shop'}</td>
-      </tr>
-    `).join('');
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-        <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0;">
-            ${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}
-          </h1>
-          <p style="margin: 10px 0 0 0; font-size: 16px;">
-            ${process.env.APP_NAME || 'Shop Management System'} - Automated Alert
-          </p>
-        </div>
-        <div style="padding: 20px; background: #f9f9f9;">
-          <p>Dear Administrator,</p>
-          <p>
-            ${alertType === 'out_of_stock'
-              ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
-              : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>. Please consider restocking soon.`
-            }
-          </p>
-          <div style="margin: 20px 0;">
-            <table style="width: 100%; border-collapse: collapse; background: white;">
-              <thead>
-                <tr style="background: #333; color: white;">
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Product Name</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Category</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Current Stock</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min Level</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Shop</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${productList}
-              </tbody>
-            </table>
-          </div>
-          <p>
-            <strong>Action Required:</strong> Please log in to the system and update the stock levels for these products.
-          </p>
-          <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
-            <p style="margin: 0;">
-              <strong>Note:</strong> This is an automated alert.
-              ${alertType === 'out_of_stock'
-                ? 'Reminders will be sent every 6 hours until stock is updated.'
-                : 'You will receive notifications for critical stock levels.'
-              }
-            </p>
-          </div>
-          <p>
-            Best regards,<br>
-            <strong>${process.env.APP_NAME || 'Shop Management'} System</strong>
-          </p>
-        </div>
-        <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">
-            This email was automatically generated by the Inventory Management System.<br>
-            Please do not reply to this message.
-          </p>
-        </div>
-      </div>
-    `;
-
-    const mailOptions = {
-      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
-      to: adminEmail,
-      subject: subject,
-      html: html,
-      priority: 'high'
-    };
-
-    await emailTransporter.sendMail(mailOptions);
-    console.log(`✅ ${alertType === 'out_of_stock' ? 'Out of stock' : 'Low stock'} alert sent for ${products.length} products`);
-    return true;
-  } catch (error) {
-    console.error('❌ Error sending stock alert email:', error);
-    return false;
-  }
-};
-
-// Check stock levels and send alerts
-const checkStockLevels = async () => {
-  try {
-    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
-
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location')
-      .lean();
-
-    console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
-
-    const outOfStockProducts = [];
-    const lowStockProducts = [];
-
-    products.forEach(product => {
-      const currentStock = product.currentStock || 0;
-      const minStockLevel = product.minStockLevel || 5;
-
-      if (currentStock === 0) {
-        outOfStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
-      } else if (currentStock <= minStockLevel) {
-        lowStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
-      }
-    });
-
-    console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
-
-    // Send out of stock notifications
-    if (outOfStockProducts.length > 0) {
-      console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
-      await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
-    }
-
-    // Send low stock notifications with rate limiting (6 hours)
-    if (lowStockProducts.length > 0) {
-      const now = new Date();
-      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-
-      const productsToAlert = [];
-      for (const product of lowStockProducts) {
-        const dbProduct = await models.Product.findById(product._id);
-        if (!dbProduct) continue;
-
-        const lastAlert = dbProduct.lastStockAlertSent;
-        if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
-          productsToAlert.push(product);
-          dbProduct.lastStockAlertSent = now;
-          await dbProduct.save();
-        }
-      }
-
-      if (productsToAlert.length > 0) {
-        console.log(`📧 [STOCK MONITOR] Sending ${productsToAlert.length} low stock alerts (rate limited)`);
-        await sendStockAlertEmail(productsToAlert, 'low_stock');
-      } else {
-        console.log(`⏰ [STOCK MONITOR] Skipping low stock alerts - rate limited (last 6 hours)`);
-      }
-    }
-
-    return {
-      outOfStock: outOfStockProducts.length,
-      lowStock: lowStockProducts.length,
-      timestamp: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
-    throw error;
-  }
-};
-
-// ==================== SERVERLESS DATABASE CONNECTION ====================
+// ==================== DATABASE CONNECTION ====================
 
 const connectDB = async () => {
   try {
@@ -755,7 +635,7 @@ const connectDB = async () => {
   }
 };
 
-// ==================== EMAIL CONFIGURATION - FIXED ====================
+// ==================== EMAIL CONFIGURATION ====================
 
 const createEmailTransporter = () => {
   try {
@@ -770,7 +650,6 @@ const createEmailTransporter = () => {
       throw new Error('Email credentials not configured');
     }
 
-    // Check if using Gmail
     const isGmail = emailUser.includes('gmail.com');
     
     const transporter = nodemailer.createTransport({
@@ -785,8 +664,8 @@ const createEmailTransporter = () => {
       tls: {
         rejectUnauthorized: false
       },
-      debug: true,
-      logger: true
+      debug: process.env.NODE_ENV === 'development',
+      logger: process.env.NODE_ENV === 'development'
     });
 
     return transporter;
@@ -817,13 +696,12 @@ const initializeEmail = async () => {
   }
 };
 
-// ==================== DEVICE FINGERPRINTING UTILITIES ====================
+// ==================== UTILITY FUNCTIONS ====================
 
 const getDeviceInfo = (req) => {
   const userAgent = req.headers['user-agent'] || '';
   const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip || 'unknown';
 
-  // Parse OS
   let os = 'Unknown';
   let osVersion = 'Unknown';
   let deviceType = 'unknown';
@@ -875,7 +753,6 @@ const getDeviceInfo = (req) => {
     deviceName = 'Linux PC';
   }
 
-  // Parse Browser
   let browser = 'Unknown';
   let browserVersion = 'Unknown';
   if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
@@ -900,7 +777,6 @@ const getDeviceInfo = (req) => {
     if (match) browserVersion = match[1];
   }
 
-  // Generate MAC address from userAgent + IP
   const macFallback = crypto
     .createHash('sha256')
     .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
@@ -927,151 +803,26 @@ const getDeviceInfo = (req) => {
   };
 };
 
-// ==================== AUTHENTICATION MIDDLEWARE ====================
-
-const authMiddleware = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
-
-    const session = await Session.findOne({
-      token: token,
-      isActive: true,
-      userId: decoded.userId
-    });
-
-    if (!session) {
-      return res.status(401).json({
-        success: false,
-        message: 'Session expired or invalid. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
-    }
-
-    if (new Date() > session.expiresAt) {
-      session.isActive = false;
-      session.logoutReason = 'inactivity';
-      await session.save();
-      return res.status(401).json({
-        success: false,
-        message: 'Session expired due to inactivity. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
-    }
-
-    session.lastActivity = new Date();
-    await session.save();
-
-    await Device.findByIdAndUpdate(session.deviceId, {
-      lastActivity: new Date()
-    });
-
-    let user = await models.User.findById(decoded.userId);
-    if (!user) {
-      user = await models.Cashier.findById(decoded.userId);
-    }
-
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User not found' });
-    }
-
-    if (user.isActive === false || user.status === 'inactive') {
-      return res.status(403).json({ success: false, message: 'Account is deactivated' });
-    }
-
-    req.user = user;
-    req.session = session;
-    req.deviceId = session.deviceId;
-    next();
-
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, message: 'Token expired' });
-    }
-    console.error('❌ Auth middleware error:', error);
-    return res.status(500).json({ success: false, message: 'Authentication error' });
-  }
+const generateSecureCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// ==================== MIDDLEWARE - Database Connection ====================
-
-const ensureDbConnection = async (req, res, next) => {
+const generateAuthToken = (userId, email, role) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      console.log('🔄 Connecting to database for request:', req.path);
-      await connectDB();
-
-      if (!emailTransporter) {
-        await initializeEmail();
-      }
-    }
-    next();
+    const secret = process.env.JWT_SECRET || 'fallback-secret-key-change-in-production';
+    const expiresIn = process.env.JWT_EXPIRES_IN || '8h';
+    const payload = {
+      userId: userId.toString(),
+      email: email,
+      role: role || 'cashier',
+      timestamp: Date.now()
+    };
+    return jwt.sign(payload, secret, { expiresIn });
   } catch (error) {
-    console.error('❌ Database connection middleware error:', error);
-    res.status(503).json({
-      success: false,
-      message: 'Database temporarily unavailable',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    console.error('❌ Error generating auth token:', error);
+    throw new Error('Failed to generate authentication token');
   }
 };
-
-app.use('/api', ensureDbConnection);
-
-// ==================== MIDDLEWARE SETUP ====================
-
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-
-app.use((req, res, next) => {
-  res.removeHeader('X-Powered-By');
-  next();
-});
-
-app.use(compression());
-
-app.use(cors({
-  origin: ['https://pos-frontend-psi-teal.vercel.app'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-}));
-
-app.options('*', cors());
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { success: false, message: 'Too many requests' }
-});
-app.use('/api/', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many authentication attempts' }
-});
-
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many email requests' }
-});
-
-app.use('/api/auth/request-code', emailLimiter);
-app.use('/api/auth/verify-code', authLimiter);
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
 
 // ==================== CALCULATION UTILITIES ====================
 
@@ -1523,7 +1274,555 @@ const CalculationUtils = {
   }
 };
 
-// ==================== OPTIMIZED TRANSACTION DATA FETCHING ====================
+// ==================== EMAIL FUNCTIONS ====================
+
+const sendSecureCodeEmail = async (email, code) => {
+  try {
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing for secure code...');
+      await initializeEmail();
+      if (!emailTransporter) {
+        throw new Error('Email service not configured');
+      }
+    }
+
+    console.log(`📧 Sending secure code to ${email}`);
+
+    const mailOptions = {
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your Secure Login Code - The Place Shop Management',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+            ${process.env.APP_NAME || 'Shop Management'} - Secure Login
+          </h2>
+          <p>Hello,</p>
+          <p>Your secure login code for ${process.env.APP_NAME || 'The Place Shop Management System'} is:</p>
+          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
+            ${code}
+          </div>
+          <p style="color: #666; font-size: 14px;">
+            This code will expire in 15 minutes for security reasons.
+          </p>
+          <p style="color: #999; font-size: 12px;">
+            If you didn't request this code, please ignore this email or contact support if you're concerned.
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 11px;">
+            This is an automated message from ${process.env.APP_NAME || 'The Place Shop Management System'}.
+          </p>
+        </div>
+      `
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ Secure code sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send secure code to ${email}:`, error.message);
+    throw new Error('Failed to send secure code. Please try again later.');
+  }
+};
+
+const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
+  try {
+    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
+    
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      const initialized = await initializeEmail();
+      if (!initialized || !emailTransporter) {
+        console.error('❌ Email transporter could not be initialized');
+        return false;
+      }
+    }
+
+    try {
+      console.log('🔄 Verifying email transporter...');
+      await emailTransporter.verify();
+      console.log('✅ Email transporter verified successfully');
+    } catch (verifyError) {
+      console.error('❌ Email transporter verification failed:', verifyError.message);
+      return false;
+    }
+
+    console.log('🔍 Finding admin users...');
+    let adminEmails = [];
+    try {
+      const admins = await models.User.find({ role: 'admin' }).select('email name');
+      adminEmails = admins.map(a => a.email);
+      console.log(`📧 Found ${adminEmails.length} admin users:`, adminEmails);
+    } catch (error) {
+      console.error('❌ Error finding admin users:', error);
+    }
+
+    if (adminEmails.length === 0) {
+      console.log('ℹ️ No admin users found, using default admin email');
+      const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+      adminEmails.push(defaultAdmin);
+      console.log(`📧 Using default admin email: ${defaultAdmin}`);
+    }
+
+    console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
+    console.log('📧 To:', adminEmails.join(', '));
+    console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
+    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
+    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+        <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0;">🔐 New Device Verification Request</h1>
+        </div>
+        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <h2 style="color: #333;">Device Login Request</h2>
+          <p>A user is trying to log in from a new device. Please verify this request.</p>
+
+          <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>👤 User:</strong> ${user.name || 'Unknown User'} (${user.email})</p>
+            <p><strong>🔑 Role:</strong> ${user.role || 'Cashier'}</p>
+            <p><strong>💻 Device:</strong> ${device.deviceName || 'Unknown Device'}</p>
+            <p><strong>🖥️ OS:</strong> ${device.os || 'Unknown'} ${device.osVersion || ''}</p>
+            <p><strong>🌐 Browser:</strong> ${device.browser || 'Unknown'} ${device.browserVersion || ''}</p>
+            <p><strong>📱 MAC Address:</strong> ${device.macAddress || 'Unknown'}</p>
+            <p><strong>🌍 IP Address:</strong> ${device.ipAddress || 'Unknown'}</p>
+            <p><strong>📅 Request Time:</strong> ${new Date().toLocaleString()}</p>
+            <p><strong>⏰ Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
+          </div>
+
+          <div style="margin: 20px 0; text-align: center;">
+            <p style="font-weight: bold; font-size: 16px;">Click below to approve or reject this device:</p>
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+              <a href="${approveLink}"
+                 style="background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
+                ✅ Approve Device
+              </a>
+              <a href="${rejectLink}"
+                 style="background: #EF4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
+                ❌ Reject Device
+              </a>
+            </div>
+            <p style="margin-top: 15px; color: #666; font-size: 14px;">
+              Or go to the Admin Dashboard > Device Verification Requests
+            </p>
+          </div>
+
+          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #92400E;">
+              <strong>⚠️ Security Alert:</strong> If you didn't approve this login request, please investigate immediately.
+            </p>
+          </div>
+        </div>
+        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
+          <p>This is an automated security notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
+          <p>Please do not reply to this email.</p>
+        </div>
+      </div>
+    `;
+
+    let sentCount = 0;
+    console.log(`📧 Sending to ${adminEmails.length} recipients...`);
+
+    for (const adminEmail of adminEmails) {
+      try {
+        console.log(`📧 Attempting to send to: ${adminEmail}`);
+        const result = await emailTransporter.sendMail({
+          from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
+          to: adminEmail,
+          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
+          html: html,
+          priority: 'high'
+        });
+        sentCount++;
+        console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
+      } catch (error) {
+        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
+      }
+    }
+
+    console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
+    console.log(`📧 Successfully sent to ${sentCount} of ${adminEmails.length} recipients`);
+    console.log(`📧 =============================================`);
+
+    return sentCount > 0;
+
+  } catch (error) {
+    console.error('❌ Error in sendDeviceVerificationEmail:', error);
+    console.error('❌ Error stack:', error.stack);
+    return false;
+  }
+};
+
+const sendDeviceApprovedEmail = async (user, device) => {
+  try {
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) return false;
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+        <div style="background: #10B981; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0;">✅ Device Approved</h1>
+        </div>
+        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <p>Dear ${user.name},</p>
+          <p>Your device has been <strong>approved</strong> for access to ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
+          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <p><strong>Device:</strong> ${device.deviceName}</p>
+            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
+            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
+            <p><strong>MAC Address:</strong> ${device.macAddress}</p>
+          </div>
+          <p>You can now log in from this device.</p>
+          <p><a href="${frontendUrl}/login" style="background: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Log In Now</a></p>
+        </div>
+        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
+          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
+        </div>
+      </div>
+    `;
+
+    await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: '✅ Device Approved for Login',
+      html: html
+    });
+
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to send device approved email:', error);
+    return false;
+  }
+};
+
+const sendDeviceRejectedEmail = async (user, device, reason) => {
+  try {
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) return false;
+    }
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+        <div style="background: #EF4444; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0;">❌ Device Rejected</h1>
+        </div>
+        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <p>Dear ${user.name},</p>
+          <p>Your device request has been <strong>rejected</strong> by an administrator.</p>
+          <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <p><strong>Device:</strong> ${device.deviceName}</p>
+            <p><strong>OS:</strong> ${device.os} ${device.osVersion || ''}</p>
+            <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion || ''}</p>
+          </div>
+          ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 15px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #92400E;">
+              <strong>⚠️ Security Alert:</strong> If you didn't request this access, please contact your administrator immediately.
+            </p>
+          </div>
+        </div>
+        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
+          <p>This is an automated notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
+        </div>
+      </div>
+    `;
+
+    await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: '❌ Device Rejected for Login',
+      html: html
+    });
+
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to send device rejected email:', error);
+    return false;
+  }
+};
+
+const sendStockAlertEmail = async (products, alertType) => {
+  try {
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      await initializeEmail();
+      if (!emailTransporter) {
+        console.log('⚠️ Email service not configured - skipping stock alert');
+        return false;
+      }
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+
+    const subject = alertType === 'out_of_stock'
+      ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
+      : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
+
+    const productList = products.map(product => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.category || 'Uncategorized'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.currentStock}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.minStockLevel || 5}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.shopName || 'Unknown Shop'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+        <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">
+            ${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}
+          </h1>
+          <p style="margin: 10px 0 0 0; font-size: 16px;">
+            ${process.env.APP_NAME || 'Shop Management System'} - Automated Alert
+          </p>
+        </div>
+        <div style="padding: 20px; background: #f9f9f9;">
+          <p>Dear Administrator,</p>
+          <p>
+            ${alertType === 'out_of_stock'
+              ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
+              : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>. Please consider restocking soon.`
+            }
+          </p>
+          <div style="margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+              <thead>
+                <tr style="background: #333; color: white;">
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Product Name</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Category</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Current Stock</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min Level</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Shop</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${productList}
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong>Action Required:</strong> Please log in to the system and update the stock levels for these products.
+          </p>
+          <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
+            <p style="margin: 0;">
+              <strong>Note:</strong> This is an automated alert.
+              ${alertType === 'out_of_stock'
+                ? 'Reminders will be sent every 6 hours until stock is updated.'
+                : 'You will receive notifications for critical stock levels.'
+              }
+            </p>
+          </div>
+          <p>
+            Best regards,<br>
+            <strong>${process.env.APP_NAME || 'Shop Management'} System</strong>
+          </p>
+        </div>
+        <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">
+            This email was automatically generated by the Inventory Management System.<br>
+            Please do not reply to this message.
+          </p>
+        </div>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
+      to: adminEmail,
+      subject: subject,
+      html: html,
+      priority: 'high'
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ ${alertType === 'out_of_stock' ? 'Out of stock' : 'Low stock'} alert sent for ${products.length} products`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending stock alert email:', error);
+    return false;
+  }
+};
+
+// ==================== MIDDLEWARE ====================
+
+const authMiddleware = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
+
+    const session = await models.Session.findOne({
+      token: token,
+      isActive: true,
+      userId: decoded.userId
+    });
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session expired or invalid. Please login again.',
+        code: 'SESSION_EXPIRED'
+      });
+    }
+
+    if (new Date() > session.expiresAt) {
+      session.isActive = false;
+      session.logoutReason = 'inactivity';
+      await session.save();
+      return res.status(401).json({
+        success: false,
+        message: 'Session expired due to inactivity. Please login again.',
+        code: 'SESSION_EXPIRED'
+      });
+    }
+
+    session.lastActivity = new Date();
+    await session.save();
+
+    await models.Device.findByIdAndUpdate(session.deviceId, {
+      lastActivity: new Date()
+    });
+
+    let user = await models.User.findById(decoded.userId);
+    if (!user) {
+      user = await models.Cashier.findById(decoded.userId);
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.isActive === false || user.status === 'inactive') {
+      return res.status(403).json({ success: false, message: 'Account is deactivated' });
+    }
+
+    req.user = user;
+    req.session = session;
+    req.deviceId = session.deviceId;
+    next();
+
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired' });
+    }
+    console.error('❌ Auth middleware error:', error);
+    return res.status(500).json({ success: false, message: 'Authentication error' });
+  }
+};
+
+const ensureDbConnection = async (req, res, next) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 Connecting to database for request:', req.path);
+      await connectDB();
+
+      if (!emailTransporter) {
+        await initializeEmail();
+      }
+    }
+    next();
+  } catch (error) {
+    console.error('❌ Database connection middleware error:', error);
+    res.status(503).json({
+      success: false,
+      message: 'Database temporarily unavailable',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// ==================== STOCK MONITORING ====================
+
+const checkStockLevels = async () => {
+  try {
+    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
+
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
+
+    const outOfStockProducts = [];
+    const lowStockProducts = [];
+
+    products.forEach(product => {
+      const currentStock = product.currentStock || 0;
+      const minStockLevel = product.minStockLevel || 5;
+
+      if (currentStock === 0) {
+        outOfStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      } else if (currentStock <= minStockLevel) {
+        lowStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      }
+    });
+
+    console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
+
+    if (outOfStockProducts.length > 0) {
+      console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
+      await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
+    }
+
+    if (lowStockProducts.length > 0) {
+      const now = new Date();
+      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
+      const productsToAlert = [];
+      for (const product of lowStockProducts) {
+        const dbProduct = await models.Product.findById(product._id);
+        if (!dbProduct) continue;
+
+        const lastAlert = dbProduct.lastStockAlertSent;
+        if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
+          productsToAlert.push(product);
+          dbProduct.lastStockAlertSent = now;
+          await dbProduct.save();
+        }
+      }
+
+      if (productsToAlert.length > 0) {
+        console.log(`📧 [STOCK MONITOR] Sending ${productsToAlert.length} low stock alerts (rate limited)`);
+        await sendStockAlertEmail(productsToAlert, 'low_stock');
+      } else {
+        console.log(`⏰ [STOCK MONITOR] Skipping low stock alerts - rate limited (last 6 hours)`);
+      }
+    }
+
+    return {
+      outOfStock: outOfStockProducts.length,
+      lowStock: lowStockProducts.length,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
+    throw error;
+  }
+};
+
+// ==================== DATABASE HELPERS ====================
 
 const getAllTransactionData = async (filters = {}) => {
   try {
@@ -1611,218 +1910,175 @@ const getAllTransactionData = async (filters = {}) => {
   }
 };
 
-// ==================== AUTHENTICATION FUNCTIONS ====================
+// ==================== CREDIT PAYMENT HELPER ====================
 
-const generateSecureCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-const sendSecureCodeEmail = async (email, code) => {
+async function handleCreditPayment(transactionData, res) {
   try {
-    // Ensure email transporter is initialized
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing for secure code...');
-      await initializeEmail();
-      if (!emailTransporter) {
-        throw new Error('Email service not configured');
-      }
+    const originalCredit = await models.Credit.findById(transactionData.originalCreditId)
+      .populate('transactionId')
+      .populate('shop', 'name location type');
+
+    if (!originalCredit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Original credit record not found'
+      });
     }
 
-    console.log(`📧 Sending secure code to ${email}`);
+    const paymentAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
+    const currentAmountPaid = CalculationUtils.safeNumber(originalCredit.amountPaid);
+    const newAmountPaid = currentAmountPaid + paymentAmount;
+    const totalAmount = CalculationUtils.safeNumber(originalCredit.totalAmount);
+    const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
 
-    const mailOptions = {
-      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Your Secure Login Code - The Place Shop Management',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-            ${process.env.APP_NAME || 'Shop Management'} - Secure Login
-          </h2>
-          <p>Hello,</p>
-          <p>Your secure login code for ${process.env.APP_NAME || 'The Place Shop Management System'} is:</p>
-          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
-            ${code}
-          </div>
-          <p style="color: #666; font-size: 14px;">
-            This code will expire in 15 minutes for security reasons.
-          </p>
-          <p style="color: #999; font-size: 12px;">
-            If you didn't request this code, please ignore this email or contact support if you're concerned.
-          </p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #888; font-size: 11px;">
-            This is an automated message from ${process.env.APP_NAME || 'The Place Shop Management System'}.
-          </p>
-        </div>
-      `
+    originalCredit.amountPaid = newAmountPaid;
+    originalCredit.balanceDue = newBalanceDue;
+
+    let newStatus = originalCredit.status;
+    if (newBalanceDue <= 0) {
+      newStatus = 'paid';
+    } else if (newAmountPaid > 0) {
+      newStatus = 'partially_paid';
+    }
+    originalCredit.status = newStatus;
+
+    originalCredit.paymentHistory.push({
+      amount: paymentAmount,
+      paymentDate: new Date(),
+      paymentMethod: transactionData.paymentMethod,
+      recordedBy: transactionData.recordedBy || 'System',
+      cashierName: transactionData.cashierName || 'Cashier',
+      notes: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
+    });
+
+    originalCredit.updatedAt = new Date();
+    await originalCredit.save();
+
+    if (originalCredit.transactionId) {
+      await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
+        amountPaid: newAmountPaid,
+        recognizedRevenue: newAmountPaid,
+        outstandingRevenue: newBalanceDue,
+        creditStatus: newStatus,
+        updatedAt: new Date()
+      });
+    }
+
+    const paymentSplit = {
+      cash: 0,
+      bank_mpesa: 0,
+      credit: 0
     };
 
-    await emailTransporter.sendMail(mailOptions);
-    console.log(`✅ Secure code sent to ${email}`);
-    return true;
-  } catch (error) {
-    console.error(`❌ Failed to send secure code to ${email}:`, error.message);
-    throw new Error('Failed to send secure code. Please try again later.');
-  }
-};
+    if (transactionData.paymentMethod === 'cash') {
+      paymentSplit.cash = paymentAmount;
+    } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
+      paymentSplit.bank_mpesa = paymentAmount;
+    } else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
+      paymentSplit.cash = CalculationUtils.safeNumber(transactionData.paymentSplit.cash);
+      paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
+    }
 
-const generateAuthToken = (userId, email, role) => {
-  try {
-    const secret = process.env.JWT_SECRET || 'fallback-secret-key-change-in-production';
-    const expiresIn = process.env.JWT_EXPIRES_IN || '8h';
-    const payload = {
-      userId: userId.toString(),
-      email: email,
-      role: role || 'cashier',
-      timestamp: Date.now()
+    const paymentTransactionData = {
+      ...transactionData,
+      isCreditPayment: true,
+      originalCreditId: originalCredit._id,
+      transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`,
+      recognizedRevenue: paymentAmount,
+      outstandingRevenue: 0,
+      amountPaid: paymentAmount,
+      immediateRevenue: paymentAmount,
+      isCreditTransaction: false,
+      creditStatus: null,
+      status: 'completed',
+      paymentSplit: paymentSplit
     };
-    return jwt.sign(payload, secret, { expiresIn });
+
+    const paymentTransaction = new models.Transaction(paymentTransactionData);
+    await paymentTransaction.save();
+
+    console.log('✅ Credit payment processed successfully:', {
+      creditId: originalCredit._id,
+      paymentAmount,
+      newAmountPaid,
+      newBalanceDue,
+      status: newStatus,
+      paymentTransactionId: paymentTransaction._id,
+      paymentSplit: paymentSplit
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        credit: originalCredit,
+        paymentTransaction: paymentTransaction
+      },
+      message: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded successfully. New balance: ${CalculationUtils.formatCurrency(newBalanceDue)}`
+    });
   } catch (error) {
-    console.error('❌ Error generating auth token:', error);
-    throw new Error('Failed to generate authentication token');
+    console.error('❌ Error processing credit payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process credit payment',
+      error: error.message
+    });
   }
-};
+}
 
-// ==================== EMAIL NOTIFICATIONS - FIXED ====================
-const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
-  try {
-    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
-    
-    // Ensure email transporter is initialized
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      const initialized = await initializeEmail();
-      if (!initialized || !emailTransporter) {
-        console.error('❌ Email transporter could not be initialized');
-        return false;
-      }
-    }
+// ==================== APP CONFIGURATION ====================
 
-    // Verify transporter
-    try {
-      console.log('🔄 Verifying email transporter...');
-      await emailTransporter.verify();
-      console.log('✅ Email transporter verified successfully');
-    } catch (verifyError) {
-      console.error('❌ Email transporter verification failed:', verifyError.message);
-      return false;
-    }
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
-    // Find admin users - THIS MUST COME BEFORE USING adminEmails
-    console.log('🔍 Finding admin users...');
-    let adminEmails = [];
-    try {
-      const admins = await models.User.find({ role: 'admin' }).select('email name');
-      adminEmails = admins.map(a => a.email);
-      console.log(`📧 Found ${adminEmails.length} admin users:`, adminEmails);
-    } catch (error) {
-      console.error('❌ Error finding admin users:', error);
-    }
+app.use((req, res, next) => {
+  res.removeHeader('X-Powered-By');
+  next();
+});
 
-    if (adminEmails.length === 0) {
-      console.log('ℹ️ No admin users found, using default admin email');
-      const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-      adminEmails.push(defaultAdmin);
-      console.log(`📧 Using default admin email: ${defaultAdmin}`);
-    }
+app.use(compression());
 
-    // NOW we can use adminEmails safely
-    console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
-    console.log('📧 To:', adminEmails.join(', '));
-    console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
+app.use(cors({
+  origin: ['https://pos-frontend-psi-teal.vercel.app'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+}));
 
-    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
-    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
-    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+app.options('*', cors());
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">🔐 New Device Verification Request</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <h2 style="color: #333;">Device Login Request</h2>
-          <p>A user is trying to log in from a new device. Please verify this request.</p>
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: 'Too many requests' }
+});
+app.use('/api/', limiter);
 
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 15px 0;">
-            <p><strong>👤 User:</strong> ${user.name || 'Unknown User'} (${user.email})</p>
-            <p><strong>🔑 Role:</strong> ${user.role || 'Cashier'}</p>
-            <p><strong>💻 Device:</strong> ${device.deviceName || 'Unknown Device'}</p>
-            <p><strong>🖥️ OS:</strong> ${device.os || 'Unknown'} ${device.osVersion || ''}</p>
-            <p><strong>🌐 Browser:</strong> ${device.browser || 'Unknown'} ${device.browserVersion || ''}</p>
-            <p><strong>📱 MAC Address:</strong> ${device.macAddress || 'Unknown'}</p>
-            <p><strong>🌍 IP Address:</strong> ${device.ipAddress || 'Unknown'}</p>
-            <p><strong>📅 Request Time:</strong> ${new Date().toLocaleString()}</p>
-            <p><strong>⏰ Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
-          </div>
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many authentication attempts' }
+});
 
-          <div style="margin: 20px 0; text-align: center;">
-            <p style="font-weight: bold; font-size: 16px;">Click below to approve or reject this device:</p>
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-              <a href="${approveLink}"
-                 style="background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
-                ✅ Approve Device
-              </a>
-              <a href="${rejectLink}"
-                 style="background: #EF4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
-                ❌ Reject Device
-              </a>
-            </div>
-            <p style="margin-top: 15px; color: #666; font-size: 14px;">
-              Or go to the Admin Dashboard > Device Verification Requests
-            </p>
-          </div>
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many email requests' }
+});
 
-          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400E;">
-              <strong>⚠️ Security Alert:</strong> If you didn't approve this login request, please investigate immediately.
-            </p>
-          </div>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated security notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-          <p>Please do not reply to this email.</p>
-        </div>
-      </div>
-    `;
+app.use('/api/auth/request-code', emailLimiter);
+app.use('/api/auth/verify-code', authLimiter);
 
-    // Send email to each recipient
-    let sentCount = 0;
-    console.log(`📧 Sending to ${adminEmails.length} recipients...`);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(morgan('dev'));
 
-    for (const adminEmail of adminEmails) {
-      try {
-        console.log(`📧 Attempting to send to: ${adminEmail}`);
-        const result = await emailTransporter.sendMail({
-          from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
-          to: adminEmail,
-          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
-          html: html,
-          priority: 'high'
-        });
-        sentCount++;
-        console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
-      } catch (error) {
-        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
-      }
-    }
+// Database connection middleware
+app.use('/api', ensureDbConnection);
 
-    console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
-    console.log(`📧 Successfully sent to ${sentCount} of ${adminEmails.length} recipients`);
-    console.log(`📧 =============================================`);
-
-    return sentCount > 0;
-
-  } catch (error) {
-    console.error('❌ Error in sendDeviceVerificationEmail:', error);
-    console.error('❌ Error stack:', error.stack);
-    return false;
-  }
-};
 // ==================== API ROUTES ====================
 
-// Health check
+// Health Check
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
@@ -1848,336 +2104,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Debug email config endpoint
-app.get('/api/debug/email-config', async (req, res) => {
-  try {
-    const emailConfig = {
-      hasEmailUser: !!process.env.EMAIL_USER,
-      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
-      emailUser: process.env.EMAIL_USER || 'Not set',
-      adminEmail: process.env.ADMIN_EMAIL || 'Not set',
-      transporterExists: !!emailTransporter,
-      emailInitialized: emailInitialized,
-      isDevelopment: process.env.NODE_ENV === 'development',
-      isVercel: !!process.env.VERCEL,
-      frontendUrl: process.env.FRONTEND_URL || 'Not set'
-    };
-
-    let transporterVerified = false;
-    let verifyError = null;
-    if (emailTransporter) {
-      try {
-        await emailTransporter.verify();
-        transporterVerified = true;
-        console.log('✅ Email transporter verified successfully');
-      } catch (error) {
-        console.error('❌ Transporter verification failed:', error.message);
-        verifyError = error.message;
-      }
-    }
-
-    const pendingRequests = await VerificationRequest.countDocuments({ status: 'pending' });
-    const totalDevices = await Device.countDocuments();
-
-    res.json({
-      success: true,
-      data: {
-        emailConfig,
-        transporterVerified,
-        verifyError,
-        pendingRequests,
-        totalDevices,
-        dbStatus: {
-          isConnected: mongoose.connection.readyState === 1,
-          dbName: mongoose.connection.name
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error checking email config:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check email configuration',
-      error: error.message
-    });
-  }
-});
-// ==================== MANUAL DEVICE APPROVAL (EMERGENCY) ====================
-
-// Emergency manual approval - Bypass email verification
-app.post('/api/admin/manual-approve-device', async (req, res) => {
-  try {
-    const { email, secretKey } = req.body;
-    
-    console.log('🔑 Manual approval request for:', email);
-    
-    // Security: Use a strong secret key from environment
-    const validKey = process.env.MANUAL_APPROVAL_KEY || 'temp-key-change-me';
-    
-    if (!secretKey || secretKey !== validKey) {
-      console.log('❌ Invalid secret key provided');
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Invalid or missing secret key' 
-      });
-    }
-    
-    // Find user
-    let user = await models.User.findOne({ email });
-    if (!user) {
-      user = await models.Cashier.findOne({ email });
-    }
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-    
-    console.log('✅ User found:', user.email, user.name);
-    
-    // Find pending devices
-    const pendingDevices = await models.Device.find({
-      userId: user._id,
-      isVerified: false
-    });
-    
-    console.log(`📱 Found ${pendingDevices.length} pending devices`);
-    
-    // Approve all pending devices
-    const result = await models.Device.updateMany(
-      { userId: user._id, isVerified: false },
-      { $set: { isVerified: true, updatedAt: new Date() } }
-    );
-    
-    // Delete pending verification requests
-    const deleteResult = await models.VerificationRequest.deleteMany({
-      userId: user._id,
-      status: 'pending'
-    });
-    
-    console.log(`✅ Approved ${result.modifiedCount} device(s), deleted ${deleteResult.deletedCount} verification requests`);
-    
-    res.json({
-      success: true,
-      message: `Approved ${result.modifiedCount} device(s) for ${user.email}`,
-      data: {
-        modifiedCount: result.modifiedCount,
-        deletedRequests: deleteResult.deletedCount,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role || 'cashier'
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Manual approval error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to approve device',
-      error: error.message 
-    });
-  }
-});
-
-// Check pending devices for a user
-app.get('/api/admin/check-pending-devices', async (req, res) => {
-  try {
-    const { email } = req.query;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email parameter required'
-      });
-    }
-    
-    let user = await models.User.findOne({ email });
-    if (!user) {
-      user = await models.Cashier.findOne({ email });
-    }
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    const pendingDevices = await models.Device.find({
-      userId: user._id,
-      isVerified: false
-    });
-    
-    const pendingRequests = await models.VerificationRequest.find({
-      userId: user._id,
-      status: 'pending'
-    });
-    
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email
-        },
-        pendingDevices: pendingDevices.map(d => ({
-          id: d._id,
-          deviceName: d.deviceName,
-          os: d.os,
-          browser: d.browser,
-          macAddress: d.macAddress,
-          createdAt: d.createdAt
-        })),
-        pendingRequests: pendingRequests.map(r => ({
-          id: r._id,
-          requestToken: r.requestToken,
-          expiresAt: r.expiresAt,
-          createdAt: r.createdAt
-        })),
-        counts: {
-          devices: pendingDevices.length,
-          requests: pendingRequests.length
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error checking pending devices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check pending devices',
-      error: error.message
-    });
-  }
-});
-// Test email sending endpoint
-app.post('/api/debug/test-email', async (req, res) => {
-  try {
-    console.log('📧 Testing email sending...');
-    
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      await initializeEmail();
-    }
-
-    if (!emailTransporter) {
-      return res.status(500).json({
-        success: false,
-        message: 'Email transporter not available'
-      });
-    }
-
-    await emailTransporter.verify();
-    console.log('✅ Transporter verified');
-
-    const testEmail = req.body.email || process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-    
-    const result = await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'} Test" <${process.env.EMAIL_USER}>`,
-      to: testEmail,
-      subject: 'Test Email from POS System',
-      html: `
-        <h1>Test Email</h1>
-        <p>This is a test email to verify that the email configuration is working.</p>
-        <p>Time: ${new Date().toLocaleString()}</p>
-        <p>If you received this, the email configuration is correct!</p>
-      `
-    });
-
-    console.log('✅ Test email sent:', result.messageId);
-
-    res.json({
-      success: true,
-      message: 'Test email sent successfully',
-      messageId: result.messageId,
-      sentTo: testEmail
-    });
-
-  } catch (error) {
-    console.error('❌ Test email failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Test email failed',
-      error: error.message
-    });
-  }
-});
-
-// ==================== STOCK MONITORING ENDPOINTS ====================
-
-app.post('/api/stock/check-now', async (req, res) => {
-  try {
-    console.log('🔍 Manual stock check triggered');
-    const result = await checkStockLevels();
-
-    res.json({
-      success: true,
-      data: result,
-      message: `Stock check completed: ${result.outOfStock} out of stock, ${result.lowStock} low stock`
-    });
-  } catch (error) {
-    console.error('❌ Error in manual stock check:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check stock levels',
-      error: error.message
-    });
-  }
-});
-
-app.get('/api/stock/alerts', async (req, res) => {
-  try {
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location')
-      .lean();
-
-    const outOfStockProducts = products.filter(p => (p.currentStock || 0) === 0);
-    const lowStockProducts = products.filter(p => {
-      const stock = p.currentStock || 0;
-      const minStock = p.minStockLevel || 5;
-      return stock > 0 && stock <= minStock;
-    });
-
-    res.json({
-      success: true,
-      data: {
-        outOfStock: outOfStockProducts.map(p => ({
-          ...p,
-          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
-          status: 'out_of_stock'
-        })),
-        lowStock: lowStockProducts.map(p => ({
-          ...p,
-          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
-          status: 'low_stock'
-        })),
-        summary: {
-          totalProducts: products.length,
-          outOfStock: outOfStockProducts.length,
-          lowStock: lowStockProducts.length,
-          inStock: products.length - outOfStockProducts.length - lowStockProducts.length
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error getting stock alerts:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get stock alerts',
-      error: error.message
-    });
-  }
-});
-
 // ==================== AUTHENTICATION ROUTES ====================
 
-// Request secure code
 app.post('/api/auth/request-code',
   [
     body('email').isEmail().normalizeEmail()
@@ -2223,7 +2151,6 @@ app.post('/api/auth/request-code',
         { upsert: true, new: true }
       );
 
-      // If email is not configured, return the code for development
       if (!emailTransporter) {
         console.log('⚠️ Email service not configured - returning code for development');
         return res.json({
@@ -2261,7 +2188,6 @@ app.post('/api/auth/request-code',
   }
 );
 
-// Verify secure code - With Device Verification
 app.post('/api/auth/verify-code',
   [
     body('email').isEmail().normalizeEmail(),
@@ -2281,38 +2207,17 @@ app.post('/api/auth/verify-code',
       const { email, code } = req.body;
       console.log('🔐 Secure code verification for:', email);
 
-      if (!models.SecureCode) {
-        return res.status(500).json({
-          success: false,
-          message: 'System configuration error. Please contact administrator.'
-        });
-      }
-
-      let secureCode;
-      try {
-        secureCode = await models.SecureCode.findOne({ email });
-      } catch (dbError) {
-        console.error('❌ Database error finding secure code:', dbError);
-        return res.status(500).json({
-          success: false,
-          message: 'Database error. Please try again.'
-        });
-      }
+      const secureCode = await models.SecureCode.findOne({ email });
 
       if (!secureCode) {
         return res.status(404).json({
           success: false,
-          message: 'No secure code found for this email. Please request a new code.'
+          message: 'No secure code found. Please request a new code.'
         });
       }
 
-      const now = new Date();
-      if (now > secureCode.expiresAt) {
-        try {
-          await models.SecureCode.deleteOne({ email });
-        } catch (deleteError) {
-          console.error('❌ Error deleting expired code:', deleteError);
-        }
+      if (new Date() > secureCode.expiresAt) {
+        await models.SecureCode.deleteOne({ email });
         return res.status(400).json({
           success: false,
           message: 'Secure code has expired. Please request a new code.'
@@ -2327,35 +2232,18 @@ app.post('/api/auth/verify-code',
       }
 
       if (secureCode.attempts >= 5) {
-        try {
-          await models.SecureCode.deleteOne({ email });
-        } catch (deleteError) {
-          console.error('❌ Error deleting code after max attempts:', deleteError);
-        }
+        await models.SecureCode.deleteOne({ email });
         return res.status(400).json({
           success: false,
           message: 'Too many failed attempts. Please request a new code.'
         });
       }
 
-      let isValidCode = false;
-      try {
-        isValidCode = await bcrypt.compare(code, secureCode.code);
-      } catch (bcryptError) {
-        console.error('❌ Bcrypt comparison error:', bcryptError);
-        return res.status(500).json({
-          success: false,
-          message: 'Error verifying code. Please try again.'
-        });
-      }
+      const isValidCode = await bcrypt.compare(code, secureCode.code);
 
       if (!isValidCode) {
         secureCode.attempts += 1;
-        try {
-          await secureCode.save();
-        } catch (saveError) {
-          console.error('❌ Error saving attempt count:', saveError);
-        }
+        await secureCode.save();
         const attemptsRemaining = 5 - secureCode.attempts;
         return res.status(400).json({
           success: false,
@@ -2365,13 +2253,8 @@ app.post('/api/auth/verify-code',
       }
 
       secureCode.used = true;
-      try {
-        await secureCode.save();
-      } catch (saveError) {
-        console.error('❌ Error marking code as used:', saveError);
-      }
+      await secureCode.save();
 
-      // Find user
       let user = await models.User.findOne({ email });
       if (!user) {
         user = await models.Cashier.findOne({ email });
@@ -2391,18 +2274,14 @@ app.post('/api/auth/verify-code',
         });
       }
 
-      // Get device info
       const deviceInfo = getDeviceInfo(req);
-
-      // Check if device exists and is verified
-      let device = await Device.findOne({
+      let device = await models.Device.findOne({
         userId: user._id,
         deviceId: deviceInfo.deviceId
       });
 
       if (!device) {
-        // New device - create and require verification (auto-verify admin)
-        device = new Device({
+        device = new models.Device({
           userId: user._id,
           deviceId: deviceInfo.deviceId,
           deviceName: deviceInfo.deviceName,
@@ -2421,7 +2300,7 @@ app.post('/api/auth/verify-code',
 
         if (user.role !== 'admin') {
           const requestToken = crypto.randomBytes(32).toString('hex');
-          const verificationRequest = new VerificationRequest({
+          const verificationRequest = new models.VerificationRequest({
             userId: user._id,
             deviceId: device._id,
             requestToken: requestToken,
@@ -2431,15 +2310,9 @@ app.post('/api/auth/verify-code',
           });
           await verificationRequest.save();
 
-          // Send verification email - with improved error handling
           console.log('📧 Attempting to send device verification email...');
           const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
           console.log(`📧 Device verification email sent: ${emailSent}`);
-          
-          if (!emailSent) {
-            console.log('⚠️ Failed to send verification email, but device request was created');
-            // Still proceed with the response, just log the error
-          }
 
           return res.status(403).json({
             success: false,
@@ -2454,14 +2327,14 @@ app.post('/api/auth/verify-code',
           });
         }
       } else if (!device.isVerified) {
-        const pendingRequest = await VerificationRequest.findOne({
+        const pendingRequest = await models.VerificationRequest.findOne({
           deviceId: device._id,
           status: 'pending'
         });
 
         if (!pendingRequest) {
           const requestToken = crypto.randomBytes(32).toString('hex');
-          const verificationRequest = new VerificationRequest({
+          const verificationRequest = new models.VerificationRequest({
             userId: user._id,
             deviceId: device._id,
             requestToken: requestToken,
@@ -2470,7 +2343,7 @@ app.post('/api/auth/verify-code',
             userAgent: deviceInfo.userAgent
           });
           await verificationRequest.save();
-          
+
           console.log('📧 Attempting to send device verification email for pending device...');
           const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
           console.log(`📧 Device verification email sent: ${emailSent}`);
@@ -2489,30 +2362,17 @@ app.post('/api/auth/verify-code',
         });
       }
 
-      // Update device login info
       device.lastLogin = new Date();
       device.loginCount = (device.loginCount || 0) + 1;
       device.ipAddress = deviceInfo.ipAddress;
       await device.save();
 
-      // Update user last login
       user.lastLogin = new Date();
       await user.save();
 
-      // Generate token
-      let token;
-      try {
-        token = generateAuthToken(user._id, user.email, user.role || 'cashier');
-      } catch (tokenError) {
-        console.error('❌ Error generating token:', tokenError);
-        return res.status(500).json({
-          success: false,
-          message: 'Error generating authentication token. Please try again.'
-        });
-      }
+      const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
 
-      // Create session
-      const session = new Session({
+      const session = new models.Session({
         userId: user._id,
         deviceId: device._id,
         token: token,
@@ -2526,8 +2386,7 @@ app.post('/api/auth/verify-code',
       device.sessions.push(session._id);
       await device.save();
 
-      // Log login history
-      await LoginHistory.create({
+      await models.LoginHistory.create({
         userId: user._id,
         email: user.email,
         role: user.role || 'cashier',
@@ -2586,7 +2445,6 @@ app.post('/api/auth/verify-code',
   }
 );
 
-// Cashier Login
 app.post('/api/auth/cashier/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -2725,7 +2583,6 @@ app.post('/api/auth/cashier/login', async (req, res) => {
   }
 });
 
-// Check if device is verified
 app.post('/api/auth/check-device', async (req, res) => {
   try {
     const { email, deviceInfo } = req.body;
@@ -2747,8 +2604,7 @@ app.post('/api/auth/check-device', async (req, res) => {
 
     console.log('✅ User found:', user.email, user.name);
 
-    // Try to find existing device FIRST
-    let device = await Device.findOne({
+    let device = await models.Device.findOne({
       userId: user._id,
       deviceId: deviceInfo.deviceId
     });
@@ -2762,9 +2618,8 @@ app.post('/api/auth/check-device', async (req, res) => {
         isVerified: device.isVerified
       });
 
-      // Device exists - check if verified
       if (!device.isVerified) {
-        const pendingRequest = await VerificationRequest.findOne({
+        const pendingRequest = await models.VerificationRequest.findOne({
           deviceId: device._id,
           status: 'pending'
         });
@@ -2773,7 +2628,7 @@ app.post('/api/auth/check-device', async (req, res) => {
           const requestToken = crypto.randomBytes(32).toString('hex');
           const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-          const newRequest = new VerificationRequest({
+          const newRequest = new models.VerificationRequest({
             userId: user._id,
             deviceId: device._id,
             requestToken: requestToken,
@@ -2803,7 +2658,6 @@ app.post('/api/auth/check-device', async (req, res) => {
         });
       }
 
-      // Device is verified - update login info
       device.lastLogin = new Date();
       device.loginCount = (device.loginCount || 0) + 1;
       device.ipAddress = deviceInfo.ipAddress || 'unknown';
@@ -2820,19 +2674,14 @@ app.post('/api/auth/check-device', async (req, res) => {
       });
     }
 
-    // ============================================================
-    // DEVICE DOES NOT EXIST - Create new one
-    // ============================================================
     console.log('🆕 Creating new device...');
 
-    // Check if device exists without userId (shouldn't happen but just in case)
-    const existingDeviceWithoutUser = await Device.findOne({
+    const existingDeviceWithoutUser = await models.Device.findOne({
       deviceId: deviceInfo.deviceId
     });
 
     if (existingDeviceWithoutUser) {
       console.log('⚠️ Device exists without userId - updating...');
-      // Update the existing device with the userId
       existingDeviceWithoutUser.userId = user._id;
       existingDeviceWithoutUser.deviceName = deviceInfo.deviceName || 'Unknown Device';
       existingDeviceWithoutUser.deviceType = deviceInfo.deviceType || 'unknown';
@@ -2849,8 +2698,7 @@ app.post('/api/auth/check-device', async (req, res) => {
       
       device = existingDeviceWithoutUser;
     } else {
-      // Create completely new device
-      const newDevice = new Device({
+      const newDevice = new models.Device({
         userId: user._id,
         deviceId: deviceInfo.deviceId,
         deviceName: deviceInfo.deviceName || 'Unknown Device',
@@ -2871,11 +2719,10 @@ app.post('/api/auth/check-device', async (req, res) => {
 
     console.log('✅ New device created:', device._id);
 
-    // Create verification request for the new device
     const requestToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const verificationRequest = new VerificationRequest({
+    const verificationRequest = new models.VerificationRequest({
       userId: user._id,
       deviceId: device._id,
       requestToken: requestToken,
@@ -2885,7 +2732,6 @@ app.post('/api/auth/check-device', async (req, res) => {
     });
     await verificationRequest.save();
 
-    // Send verification email
     console.log('📧 Attempting to send device verification email from check-device...');
     const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
     console.log(`📧 Device verification email sent: ${emailSent}`);
@@ -2914,9 +2760,9 @@ app.post('/api/auth/check-device', async (req, res) => {
     });
   }
 });
+
 // ==================== SESSION MANAGEMENT ROUTES ====================
 
-// Refresh session
 app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
   try {
     res.json({
@@ -2933,7 +2779,6 @@ app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
   }
 });
 
-// Logout
 app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   try {
     req.session.isActive = false;
@@ -2953,10 +2798,9 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   }
 });
 
-// Get active sessions
 app.get('/api/auth/sessions', authMiddleware, async (req, res) => {
   try {
-    const sessions = await Session.find({
+    const sessions = await models.Session.find({
       userId: req.user._id,
       isActive: true
     }).populate('deviceId');
@@ -2980,10 +2824,9 @@ app.get('/api/auth/sessions', authMiddleware, async (req, res) => {
   }
 });
 
-// Get user's devices
 app.get('/api/auth/devices', authMiddleware, async (req, res) => {
   try {
-    const devices = await Device.find({
+    const devices = await models.Device.find({
       userId: req.user._id,
       isActive: true
     }).sort({ lastLogin: -1 });
@@ -3014,12 +2857,11 @@ app.get('/api/auth/devices', authMiddleware, async (req, res) => {
   }
 });
 
-// Revoke device access
 app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
   try {
     const { deviceId } = req.params;
 
-    const device = await Device.findOne({
+    const device = await models.Device.findOne({
       _id: deviceId,
       userId: req.user._id
     });
@@ -3041,7 +2883,7 @@ app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
     device.isActive = false;
     await device.save();
 
-    await Session.updateMany(
+    await models.Session.updateMany(
       { deviceId: device._id, isActive: true },
       { isActive: false, logoutReason: 'admin_terminated' }
     );
@@ -3059,9 +2901,8 @@ app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
   }
 });
 
-// ==================== ADMIN DEVICE VERIFICATION ROUTES ====================
+// ==================== ADMIN ROUTES ====================
 
-// Get pending verification requests
 app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -3071,7 +2912,7 @@ app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => 
       });
     }
 
-    const requests = await VerificationRequest.find({ status: 'pending' })
+    const requests = await models.VerificationRequest.find({ status: 'pending' })
       .populate('userId', 'name email role')
       .populate('deviceId')
       .sort({ createdAt: -1 });
@@ -3098,7 +2939,6 @@ app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => 
   }
 });
 
-// Approve or reject device verification
 app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -3117,7 +2957,7 @@ app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
       });
     }
 
-    const verificationRequest = await VerificationRequest.findById(requestId)
+    const verificationRequest = await models.VerificationRequest.findById(requestId)
       .populate('userId')
       .populate('deviceId');
 
@@ -3149,7 +2989,7 @@ app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
       verificationRequest.approvedBy = req.user._id;
       verificationRequest.approvedAt = new Date();
 
-      await Device.findByIdAndUpdate(verificationRequest.deviceId, {
+      await models.Device.findByIdAndUpdate(verificationRequest.deviceId, {
         isVerified: true
       });
 
@@ -3177,6 +3017,153 @@ app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to verify device',
+      error: error.message
+    });
+  }
+});
+
+// Emergency manual approval - Bypass email verification
+app.post('/api/admin/manual-approve-device', async (req, res) => {
+  try {
+    const { email, secretKey } = req.body;
+    
+    console.log('🔑 Manual approval request for:', email);
+    
+    const validKey = process.env.MANUAL_APPROVAL_KEY || 'temp-key-change-me';
+    
+    if (!secretKey || secretKey !== validKey) {
+      console.log('❌ Invalid secret key provided');
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Invalid or missing secret key' 
+      });
+    }
+    
+    let user = await models.User.findOne({ email });
+    if (!user) {
+      user = await models.Cashier.findOne({ email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    console.log('✅ User found:', user.email, user.name);
+    
+    const pendingDevices = await models.Device.find({
+      userId: user._id,
+      isVerified: false
+    });
+    
+    console.log(`📱 Found ${pendingDevices.length} pending devices`);
+    
+    const result = await models.Device.updateMany(
+      { userId: user._id, isVerified: false },
+      { $set: { isVerified: true, updatedAt: new Date() } }
+    );
+    
+    const deleteResult = await models.VerificationRequest.deleteMany({
+      userId: user._id,
+      status: 'pending'
+    });
+    
+    console.log(`✅ Approved ${result.modifiedCount} device(s), deleted ${deleteResult.deletedCount} verification requests`);
+    
+    res.json({
+      success: true,
+      message: `Approved ${result.modifiedCount} device(s) for ${user.email}`,
+      data: {
+        modifiedCount: result.modifiedCount,
+        deletedRequests: deleteResult.deletedCount,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role || 'cashier'
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual approval error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to approve device',
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/admin/check-pending-devices', async (req, res) => {
+  try {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email parameter required'
+      });
+    }
+    
+    let user = await models.User.findOne({ email });
+    if (!user) {
+      user = await models.Cashier.findOne({ email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const pendingDevices = await models.Device.find({
+      userId: user._id,
+      isVerified: false
+    });
+    
+    const pendingRequests = await models.VerificationRequest.find({
+      userId: user._id,
+      status: 'pending'
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email
+        },
+        pendingDevices: pendingDevices.map(d => ({
+          id: d._id,
+          deviceName: d.deviceName,
+          os: d.os,
+          browser: d.browser,
+          macAddress: d.macAddress,
+          createdAt: d.createdAt
+        })),
+        pendingRequests: pendingRequests.map(r => ({
+          id: r._id,
+          requestToken: r.requestToken,
+          expiresAt: r.expiresAt,
+          createdAt: r.createdAt
+        })),
+        counts: {
+          devices: pendingDevices.length,
+          requests: pendingRequests.length
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error checking pending devices:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check pending devices',
       error: error.message
     });
   }
@@ -3986,8 +3973,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
   }
 });
 
-// ==================== TRANSACTION CREATION ROUTE ====================
-
 app.post('/api/transactions', async (req, res) => {
   try {
     const transactionData = req.body;
@@ -4285,120 +4270,179 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
-async function handleCreditPayment(transactionData, res) {
+// ==================== STOCK MONITORING ENDPOINTS ====================
+
+app.post('/api/stock/check-now', async (req, res) => {
   try {
-    const originalCredit = await models.Credit.findById(transactionData.originalCreditId)
-      .populate('transactionId')
-      .populate('shop', 'name location type');
+    console.log('🔍 Manual stock check triggered');
+    const result = await checkStockLevels();
 
-    if (!originalCredit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Original credit record not found'
-      });
-    }
-
-    const paymentAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
-    const currentAmountPaid = CalculationUtils.safeNumber(originalCredit.amountPaid);
-    const newAmountPaid = currentAmountPaid + paymentAmount;
-    const totalAmount = CalculationUtils.safeNumber(originalCredit.totalAmount);
-    const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
-
-    originalCredit.amountPaid = newAmountPaid;
-    originalCredit.balanceDue = newBalanceDue;
-
-    let newStatus = originalCredit.status;
-    if (newBalanceDue <= 0) {
-      newStatus = 'paid';
-    } else if (newAmountPaid > 0) {
-      newStatus = 'partially_paid';
-    }
-    originalCredit.status = newStatus;
-
-    originalCredit.paymentHistory.push({
-      amount: paymentAmount,
-      paymentDate: new Date(),
-      paymentMethod: transactionData.paymentMethod,
-      recordedBy: transactionData.recordedBy || 'System',
-      cashierName: transactionData.cashierName || 'Cashier',
-      notes: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
-    });
-
-    originalCredit.updatedAt = new Date();
-    await originalCredit.save();
-
-    if (originalCredit.transactionId) {
-      await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
-        amountPaid: newAmountPaid,
-        recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue,
-        creditStatus: newStatus,
-        updatedAt: new Date()
-      });
-    }
-
-    const paymentSplit = {
-      cash: 0,
-      bank_mpesa: 0,
-      credit: 0
-    };
-
-    if (transactionData.paymentMethod === 'cash') {
-      paymentSplit.cash = paymentAmount;
-    } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
-      paymentSplit.bank_mpesa = paymentAmount;
-    } else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
-      paymentSplit.cash = CalculationUtils.safeNumber(transactionData.paymentSplit.cash);
-      paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
-    }
-
-    const paymentTransactionData = {
-      ...transactionData,
-      isCreditPayment: true,
-      originalCreditId: originalCredit._id,
-      transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`,
-      recognizedRevenue: paymentAmount,
-      outstandingRevenue: 0,
-      amountPaid: paymentAmount,
-      immediateRevenue: paymentAmount,
-      isCreditTransaction: false,
-      creditStatus: null,
-      status: 'completed',
-      paymentSplit: paymentSplit
-    };
-
-    const paymentTransaction = new models.Transaction(paymentTransactionData);
-    await paymentTransaction.save();
-
-    console.log('✅ Credit payment processed successfully:', {
-      creditId: originalCredit._id,
-      paymentAmount,
-      newAmountPaid,
-      newBalanceDue,
-      status: newStatus,
-      paymentTransactionId: paymentTransaction._id,
-      paymentSplit: paymentSplit
-    });
-
-    res.status(201).json({
+    res.json({
       success: true,
-      data: {
-        credit: originalCredit,
-        paymentTransaction: paymentTransaction
-      },
-      message: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded successfully. New balance: ${CalculationUtils.formatCurrency(newBalanceDue)}`
+      data: result,
+      message: `Stock check completed: ${result.outOfStock} out of stock, ${result.lowStock} low stock`
     });
   } catch (error) {
-    console.error('❌ Error processing credit payment:', error);
+    console.error('❌ Error in manual stock check:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to process credit payment',
+      message: 'Failed to check stock levels',
       error: error.message
     });
   }
-}
+});
+
+app.get('/api/stock/alerts', async (req, res) => {
+  try {
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    const outOfStockProducts = products.filter(p => (p.currentStock || 0) === 0);
+    const lowStockProducts = products.filter(p => {
+      const stock = p.currentStock || 0;
+      const minStock = p.minStockLevel || 5;
+      return stock > 0 && stock <= minStock;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        outOfStock: outOfStockProducts.map(p => ({
+          ...p,
+          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
+          status: 'out_of_stock'
+        })),
+        lowStock: lowStockProducts.map(p => ({
+          ...p,
+          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
+          status: 'low_stock'
+        })),
+        summary: {
+          totalProducts: products.length,
+          outOfStock: outOfStockProducts.length,
+          lowStock: lowStockProducts.length,
+          inStock: products.length - outOfStockProducts.length - lowStockProducts.length
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error getting stock alerts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get stock alerts',
+      error: error.message
+    });
+  }
+});
 
 // ==================== DEBUG ENDPOINTS ====================
+
+app.get('/api/debug/email-config', async (req, res) => {
+  try {
+    const emailConfig = {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
+      emailUser: process.env.EMAIL_USER || 'Not set',
+      adminEmail: process.env.ADMIN_EMAIL || 'Not set',
+      transporterExists: !!emailTransporter,
+      emailInitialized: emailInitialized,
+      isDevelopment: process.env.NODE_ENV === 'development',
+      isVercel: !!process.env.VERCEL,
+      frontendUrl: process.env.FRONTEND_URL || 'Not set'
+    };
+
+    let transporterVerified = false;
+    let verifyError = null;
+    if (emailTransporter) {
+      try {
+        await emailTransporter.verify();
+        transporterVerified = true;
+        console.log('✅ Email transporter verified successfully');
+      } catch (error) {
+        console.error('❌ Transporter verification failed:', error.message);
+        verifyError = error.message;
+      }
+    }
+
+    const pendingRequests = await models.VerificationRequest.countDocuments({ status: 'pending' });
+    const totalDevices = await models.Device.countDocuments();
+
+    res.json({
+      success: true,
+      data: {
+        emailConfig,
+        transporterVerified,
+        verifyError,
+        pendingRequests,
+        totalDevices,
+        dbStatus: {
+          isConnected: mongoose.connection.readyState === 1,
+          dbName: mongoose.connection.name
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error checking email config:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email configuration',
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/debug/test-email', async (req, res) => {
+  try {
+    console.log('📧 Testing email sending...');
+    
+    if (!emailTransporter) {
+      console.log('🔄 Email transporter not initialized, initializing...');
+      await initializeEmail();
+    }
+
+    if (!emailTransporter) {
+      return res.status(500).json({
+        success: false,
+        message: 'Email transporter not available'
+      });
+    }
+
+    await emailTransporter.verify();
+    console.log('✅ Transporter verified');
+
+    const testEmail = req.body.email || process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+    
+    const result = await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'} Test" <${process.env.EMAIL_USER}>`,
+      to: testEmail,
+      subject: 'Test Email from POS System',
+      html: `
+        <h1>Test Email</h1>
+        <p>This is a test email to verify that the email configuration is working.</p>
+        <p>Time: ${new Date().toLocaleString()}</p>
+        <p>If you received this, the email configuration is correct!</p>
+      `
+    });
+
+    console.log('✅ Test email sent:', result.messageId);
+
+    res.json({
+      success: true,
+      message: 'Test email sent successfully',
+      messageId: result.messageId,
+      sentTo: testEmail
+    });
+
+  } catch (error) {
+    console.error('❌ Test email failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Test email failed',
+      error: error.message
+    });
+  }
+});
 
 app.get('/api/debug/database', async (req, res) => {
   try {
@@ -4463,7 +4507,9 @@ app.get('/', (req, res) => {
       },
       admin: {
         verificationRequests: '/api/admin/verification-requests',
-        verifyDevice: '/api/admin/verify-device'
+        verifyDevice: '/api/admin/verify-device',
+        manualApprove: '/api/admin/manual-approve-device',
+        checkPending: '/api/admin/check-pending-devices'
       }
     },
     serverless: true,
@@ -4489,8 +4535,6 @@ app.use('/api/*', (req, res) => {
 
 // ==================== SERVERLESS EXPORT ====================
 
-let dbInitialized = false;
-
 const initializeServer = async () => {
   if (dbInitialized) return;
 
@@ -4508,8 +4552,9 @@ initializeServer();
 
 module.exports = app;
 
+// ==================== LOCAL SERVER ====================
+
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  const PORT = process.env.PORT || 5001;
   app.listen(PORT, async () => {
     await connectDB();
     await initializeEmail();
