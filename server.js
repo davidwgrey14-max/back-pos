@@ -345,7 +345,7 @@ const sendStockAlertEmail = async (products, alertType) => {
         </div>
        
         <div style="padding: 20px; background: #f9f9f9;">
-          <p>Dear Administrator,</p>
+          <p>Dear Baby Girl Pamela,</p>
           <p>
             ${alertType === 'out_of_stock'
               ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
@@ -910,7 +910,7 @@ const sendSecureCodeEmail = async (email, code) => {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-          Stanzo Bar Management - Secure Login
+          Pamela Bar Management - Secure Login
         </h2>
         <p>Hello,</p>
         <p>Your secure login code for The place Shop Management System is:</p>
@@ -1569,7 +1569,7 @@ app.use((req, res, next) => {
 app.use(compression());
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: ['http://localhost:3000', 'https://back-pos.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
@@ -1668,7 +1668,7 @@ const connectDB = async () => {
       return;
     }
 
-    const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/stanzo_db';
+    const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/Eliud_db';
     
     console.log('🔗 Connecting to MongoDB...');
     console.log(`📊 Connection attempt: ${connectionRetryCount + 1}/${MAX_RETRY_COUNT}`);

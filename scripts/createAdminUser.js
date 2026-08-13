@@ -6,10 +6,9 @@ require('dotenv').config();
 const createAdminUser = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'MONGODB_URI=mongodb+srv://kinyuastanzo6759_db_user:Y9P9gdROuewvBmq8@cluster0.4rtcx4y.mongodb.net/?appName=Cluster0');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://davidwgrey14_db_user:cZKjZXTSDlA4eIg6@cluster0.vkcmyev.mongodb.net/?appName=Cluster0');
     console.log('✅ Connected to MongoDB');
-    // MONGODB_URI=mongodb+srv://kinyuastanzo6759_db_user:Y9P9gdROuewvBmq8@cluster0.4rtcx4y.mongodb.net/?appName=Cluster0
-    // FIXED PATH: Go up one level to backend root, then into models
+    
     const User = require('../models/User');
     
     // Check if admin already exists
