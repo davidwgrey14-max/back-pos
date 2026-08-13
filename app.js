@@ -14,7 +14,7 @@ const corsOptions = {
     const allowedOrigins = [
       'https://back-pos.vercel.app',
       'http://localhost:3000',
-      'http://localhost:3001',
+      'https://pos-frontend-psi-teal.vercel.app',
       'http://127.0.0.1:3000',
       process.env.CLIENT_URL
     ].filter(Boolean);
@@ -59,7 +59,7 @@ app.use((req, res, next) => {
   // Set CORS headers for all responses
   const origin = req.headers.origin;
   const allowedOrigins = [
-    'https://back-pos.vercel.app/',
+    'https://pos-frontend-psi-teal.vercel.app',
     'http://localhost:3000',
     process.env.CLIENT_URL
   ].filter(Boolean);

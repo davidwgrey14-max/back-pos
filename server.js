@@ -1569,7 +1569,7 @@ app.use((req, res, next) => {
 app.use(compression());
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://back-pos.vercel.app'],
+  origin: ['http://localhost:3000', 'https://pos-frontend-psi-teal.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
