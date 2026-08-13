@@ -1,4 +1,4 @@
-// server.js - Serverless Optimized for Vercel with Stock Monitoring
+// server.js - Serverless Optimized for Vercel with Stock Monitoring & Device Verification
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -35,1052 +35,6 @@ app.use('/api/transactions/combined', (req, res, next) => {
   next();
 });
 
-
-// server.js - Add these new schemas and routes
-
-// ==================== DEVICE AND SESSION SCHEMAS ====================
-
-// Device Schema - Track all devices that have logged in
-const deviceSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: String, required: true, unique: true },
-  deviceName: { type: String, required: true },
-  deviceType: { type: String, enum: ['desktop', 'laptop', 'mobile', 'tablet', 'unknown'] },
-  os: { type: String },
-  osVersion: { type: String },
-  browser: { type: String },
-  browserVersion: { type: String },
-  macAddress: { type: String },
-  ipAddress: { type: String },
-  lastLogin: { type: Date, default: Date.now },
-  firstLogin: { type: Date, default: Date.now },
-  isVerified: { type: Boolean, default: false },
-  isActive: { type: Boolean, default: true },
-  loginCount: { type: Number, default: 0 },
-  lastActivity: { type: Date, default: Date.now },
-  sessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-
-// Session Schema - Track active sessions with inactivity
-const sessionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
-  token: { type: String, required: true, unique: true },
-  lastActivity: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true },
-  isActive: { type: Boolean, default: true },
-  logoutReason: { type: String, enum: ['manual', 'inactivity', 'device_verification', 'admin_terminated'] },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Verification Request Schema - For new device approvals
-const verificationRequestSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
-  requestToken: { type: String, required: true, unique: true },
-  expiresAt: { type: Date, required: true },
-  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  approvedAt: { type: Date },
-  rejectionReason: { type: String },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Login History Schema - Track all login attempts
-const loginHistorySchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  email: { type: String },
-  role: { type: String },
-  success: { type: Boolean, default: false },
-  ipAddress: { type: String },
-  userAgent: { type: String },
-  deviceId: { type: String },
-  macAddress: { type: String },
-  os: { type: String },
-  browser: { type: String },
-  location: { type: String },
-  failureReason: { type: String },
-  timestamp: { type: Date, default: Date.now }
-});
-
-// Register the new models
-const Device = mongoose.models.Device || mongoose.model('Device', deviceSchema);
-const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
-const VerificationRequest = mongoose.models.VerificationRequest || mongoose.model('VerificationRequest', verificationRequestSchema);
-const LoginHistory = mongoose.models.LoginHistory || mongoose.model('LoginHistory', loginHistorySchema);
-
-// ==================== DEVICE FINGERPRINTING UTILITIES ====================
-
-const getDeviceInfo = (req) => {
-  const userAgent = req.headers['user-agent'] || '';
-  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
-  
-  // Parse OS
-  let os = 'Unknown';
-  let osVersion = 'Unknown';
-  let deviceType = 'unknown';
-  let deviceName = 'Unknown Device';
-  
-  // Detect OS
-  if (userAgent.includes('Windows NT 10.0')) {
-    os = 'Windows 10';
-    osVersion = '10.0';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
-  } else if (userAgent.includes('Windows NT 6.1')) {
-    os = 'Windows 7';
-    osVersion = '6.1';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
-  } else if (userAgent.includes('Windows NT 6.2')) {
-    os = 'Windows 8';
-    osVersion = '6.2';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
-  } else if (userAgent.includes('Windows NT 6.3')) {
-    os = 'Windows 8.1';
-    osVersion = '6.3';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
-  } else if (userAgent.includes('Mac OS X')) {
-    os = 'macOS';
-    const match = userAgent.match(/Mac OS X (\d+[._]\d+)/);
-    if (match) osVersion = match[1].replace('_', '.');
-    deviceType = 'desktop';
-    deviceName = 'Mac';
-  } else if (userAgent.includes('iPhone')) {
-    os = 'iOS';
-    deviceType = 'mobile';
-    deviceName = 'iPhone';
-  } else if (userAgent.includes('iPad')) {
-    os = 'iOS';
-    deviceType = 'tablet';
-    deviceName = 'iPad';
-  } else if (userAgent.includes('Android')) {
-    os = 'Android';
-    deviceType = 'mobile';
-    const match = userAgent.match(/Android (\d+[._]\d+)/);
-    if (match) osVersion = match[1];
-    deviceName = 'Android Device';
-  } else if (userAgent.includes('Linux')) {
-    os = 'Linux';
-    deviceType = 'desktop';
-    deviceName = 'Linux PC';
-  }
-  
-  // Parse Browser
-  let browser = 'Unknown';
-  let browserVersion = 'Unknown';
-  if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
-    browser = 'Chrome';
-    const match = userAgent.match(/Chrome\/(\d+)/);
-    if (match) browserVersion = match[1];
-  } else if (userAgent.includes('Firefox')) {
-    browser = 'Firefox';
-    const match = userAgent.match(/Firefox\/(\d+)/);
-    if (match) browserVersion = match[1];
-  } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
-    browser = 'Safari';
-    const match = userAgent.match(/Version\/(\d+)/);
-    if (match) browserVersion = match[1];
-  } else if (userAgent.includes('Edg')) {
-    browser = 'Edge';
-    const match = userAgent.match(/Edg\/(\d+)/);
-    if (match) browserVersion = match[1];
-  } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
-    browser = 'Opera';
-    const match = userAgent.match(/Opera\/(\d+)/) || userAgent.match(/OPR\/(\d+)/);
-    if (match) browserVersion = match[1];
-  }
-  
-  // Generate MAC address from userAgent + IP (fallback since we can't get real MAC from browser)
-  const macFallback = require('crypto')
-    .createHash('sha256')
-    .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
-    .digest('hex')
-    .substring(0, 17)
-    .toUpperCase()
-    .replace(/(.{2})(?=.)/g, '$1:');
-  
-  return {
-    userAgent,
-    ipAddress: ip,
-    os,
-    osVersion,
-    browser,
-    browserVersion,
-    deviceType,
-    deviceName,
-    macAddress: macFallback, // Real MAC not accessible from browser, using fingerprint
-    deviceId: require('crypto')
-      .createHash('sha256')
-      .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
-      .digest('hex')
-      .substring(0, 32)
-  };
-};
-
-// ==================== AUTHENTICATION MIDDLEWARE WITH SESSION CHECK ====================
-
-const authMiddleware = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-    
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
-    
-    // Check if session exists and is active
-    const session = await Session.findOne({ 
-      token: token, 
-      isActive: true,
-      userId: decoded.userId
-    });
-    
-    if (!session) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Session expired or invalid. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
-    }
-    
-    // Check if session expired
-    if (new Date() > session.expiresAt) {
-      session.isActive = false;
-      session.logoutReason = 'inactivity';
-      await session.save();
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Session expired due to inactivity. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
-    }
-    
-    // Update last activity
-    session.lastActivity = new Date();
-    await session.save();
-    
-    // Update device last activity
-    await Device.findByIdAndUpdate(session.deviceId, {
-      lastActivity: new Date()
-    });
-    
-    // Get user
-    let user = await User.findById(decoded.userId);
-    if (!user) {
-      user = await Cashier.findById(decoded.userId);
-    }
-    
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User not found' });
-    }
-    
-    if (user.isActive === false || user.status === 'inactive') {
-      return res.status(403).json({ success: false, message: 'Account is deactivated' });
-    }
-    
-    req.user = user;
-    req.session = session;
-    req.deviceId = session.deviceId;
-    next();
-    
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, message: 'Token expired' });
-    }
-    console.error('❌ Auth middleware error:', error);
-    return res.status(500).json({ success: false, message: 'Authentication error' });
-  }
-};
-
-// ==================== DEVICE VERIFICATION ROUTES ====================
-
-// Check if device is verified
-app.post('/api/auth/check-device', async (req, res) => {
-  try {
-    const { email, deviceInfo } = req.body;
-    
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = await Cashier.findOne({ email });
-    }
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-    
-    // Find or create device
-    let device = await Device.findOne({ 
-      userId: user._id, 
-      deviceId: deviceInfo.deviceId 
-    });
-    
-    if (!device) {
-      // New device - create verification request
-      const requestToken = require('crypto').randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      
-      const newDevice = new Device({
-        userId: user._id,
-        deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName || 'Unknown Device',
-        deviceType: deviceInfo.deviceType || 'unknown',
-        os: deviceInfo.os,
-        osVersion: deviceInfo.osVersion,
-        browser: deviceInfo.browser,
-        browserVersion: deviceInfo.browserVersion,
-        macAddress: deviceInfo.macAddress,
-        ipAddress: deviceInfo.ipAddress,
-        isVerified: false,
-        firstLogin: new Date(),
-        lastLogin: new Date()
-      });
-      await newDevice.save();
-      
-      const verificationRequest = new VerificationRequest({
-        userId: user._id,
-        deviceId: newDevice._id,
-        requestToken: requestToken,
-        expiresAt: expiresAt,
-        ipAddress: deviceInfo.ipAddress,
-        userAgent: deviceInfo.userAgent
-      });
-      await verificationRequest.save();
-      
-      // Send email notification to admin
-      await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
-      
-      return res.json({
-        success: false,
-        requiresVerification: true,
-        message: 'New device detected. Please wait for admin approval.',
-        requestId: verificationRequest._id,
-        deviceInfo: {
-          deviceName: newDevice.deviceName,
-          os: newDevice.os,
-          browser: newDevice.browser,
-          macAddress: newDevice.macAddress,
-          ipAddress: newDevice.ipAddress,
-          deviceType: newDevice.deviceType
-        }
-      });
-    }
-    
-    if (!device.isVerified) {
-      // Device exists but not verified
-      const pendingRequest = await VerificationRequest.findOne({
-        deviceId: device._id,
-        status: 'pending'
-      });
-      
-      if (!pendingRequest) {
-        // Create new verification request
-        const requestToken = require('crypto').randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        
-        const newRequest = new VerificationRequest({
-          userId: user._id,
-          deviceId: device._id,
-          requestToken: requestToken,
-          expiresAt: expiresAt,
-          ipAddress: deviceInfo.ipAddress,
-          userAgent: deviceInfo.userAgent
-        });
-        await newRequest.save();
-        
-        await sendDeviceVerificationEmail(user, device, newRequest);
-      }
-      
-      return res.json({
-        success: false,
-        requiresVerification: true,
-        message: 'Device pending verification. Please wait for admin approval.',
-        deviceInfo: {
-          deviceName: device.deviceName,
-          os: device.os,
-          browser: device.browser,
-          macAddress: device.macAddress,
-          ipAddress: device.ipAddress,
-          deviceType: device.deviceType
-        }
-      });
-    }
-    
-    // Device is verified - update login info
-    device.lastLogin = new Date();
-    device.loginCount = (device.loginCount || 0) + 1;
-    device.ipAddress = deviceInfo.ipAddress;
-    await device.save();
-    
-    return res.json({
-      success: true,
-      message: 'Device verified',
-      device: {
-        id: device._id,
-        deviceName: device.deviceName,
-        isVerified: device.isVerified
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Device check error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check device',
-      error: error.message
-    });
-  }
-});
-
-// Admin - Get pending verification requests
-app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
-    
-    const requests = await VerificationRequest.find({ status: 'pending' })
-      .populate('userId', 'name email role')
-      .populate('deviceId')
-      .sort({ createdAt: -1 });
-    
-    res.json({
-      success: true,
-      data: requests.map(req => ({
-        id: req._id,
-        user: req.userId,
-        device: req.deviceId,
-        requestToken: req.requestToken,
-        createdAt: req.createdAt,
-        expiresAt: req.expiresAt,
-        ipAddress: req.ipAddress,
-        userAgent: req.userAgent
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Error fetching verification requests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch verification requests'
-    });
-  }
-});
-
-// Admin - Approve or reject device verification
-app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
-    
-    const { requestId, action, rejectionReason } = req.body;
-    
-    if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid action. Must be "approve" or "reject"'
-      });
-    }
-    
-    const verificationRequest = await VerificationRequest.findById(requestId)
-      .populate('userId')
-      .populate('deviceId');
-    
-    if (!verificationRequest) {
-      return res.status(404).json({
-        success: false,
-        message: 'Verification request not found'
-      });
-    }
-    
-    if (verificationRequest.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: `Request already ${verificationRequest.status}`
-      });
-    }
-    
-    if (new Date() > verificationRequest.expiresAt) {
-      verificationRequest.status = 'expired';
-      await verificationRequest.save();
-      return res.status(400).json({
-        success: false,
-        message: 'Verification request has expired'
-      });
-    }
-    
-    if (action === 'approve') {
-      verificationRequest.status = 'approved';
-      verificationRequest.approvedBy = req.user._id;
-      verificationRequest.approvedAt = new Date();
-      
-      // Mark device as verified
-      await Device.findByIdAndUpdate(verificationRequest.deviceId, {
-        isVerified: true
-      });
-      
-      // Send notification to user
-      await sendDeviceApprovedEmail(verificationRequest.userId, verificationRequest.deviceId);
-      
-    } else {
-      verificationRequest.status = 'rejected';
-      verificationRequest.approvedBy = req.user._id;
-      verificationRequest.approvedAt = new Date();
-      verificationRequest.rejectionReason = rejectionReason || 'No reason provided';
-      
-      // Send notification to user
-      await sendDeviceRejectedEmail(verificationRequest.userId, verificationRequest.deviceId, rejectionReason);
-    }
-    
-    await verificationRequest.save();
-    
-    res.json({
-      success: true,
-      message: `Device ${action}d successfully`,
-      data: verificationRequest
-    });
-    
-  } catch (error) {
-    console.error('❌ Error verifying device:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to verify device',
-      error: error.message
-    });
-  }
-});
-
-// Get user's devices
-app.get('/api/auth/devices', authMiddleware, async (req, res) => {
-  try {
-    const devices = await Device.find({ 
-      userId: req.user._id,
-      isActive: true
-    }).sort({ lastLogin: -1 });
-    
-    res.json({
-      success: true,
-      data: devices.map(d => ({
-        id: d._id,
-        deviceName: d.deviceName,
-        deviceType: d.deviceType,
-        os: d.os,
-        browser: d.browser,
-        macAddress: d.macAddress,
-        ipAddress: d.ipAddress,
-        isVerified: d.isVerified,
-        lastLogin: d.lastLogin,
-        firstLogin: d.firstLogin,
-        loginCount: d.loginCount,
-        isCurrent: d._id.toString() === req.deviceId?.toString()
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Error fetching devices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch devices'
-    });
-  }
-});
-
-// Revoke device access
-app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    
-    const device = await Device.findOne({ 
-      _id: deviceId, 
-      userId: req.user._id 
-    });
-    
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        message: 'Device not found'
-      });
-    }
-    
-    // Don't allow revoking current device
-    if (device._id.toString() === req.deviceId?.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot revoke access for current device'
-      });
-    }
-    
-    device.isActive = false;
-    await device.save();
-    
-    // Terminate all sessions for this device
-    await Session.updateMany(
-      { deviceId: device._id, isActive: true },
-      { isActive: false, logoutReason: 'admin_terminated' }
-    );
-    
-    res.json({
-      success: true,
-      message: 'Device access revoked successfully'
-    });
-  } catch (error) {
-    console.error('❌ Error revoking device:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to revoke device access'
-    });
-  }
-});
-
-// ==================== UPDATED LOGIN WITH DEVICE TRACKING ====================
-
-// Updated admin login with device tracking
-app.post('/api/auth/verify-code', [
-  body('email').isEmail().normalizeEmail(),
-  body('code').isLength({ min: 6, max: 6 }).isNumeric()
-], async (req, res) => {
-  try {
-    // ... existing verification code ...
-    
-    // After successful verification, handle device tracking
-    const deviceInfo = getDeviceInfo(req);
-    
-    // Check device
-    let device = await Device.findOne({ 
-      userId: user._id, 
-      deviceId: deviceInfo.deviceId 
-    });
-    
-    if (!device) {
-      // New device - create and require verification
-      device = new Device({
-        userId: user._id,
-        deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName,
-        deviceType: deviceInfo.deviceType,
-        os: deviceInfo.os,
-        osVersion: deviceInfo.osVersion,
-        browser: deviceInfo.browser,
-        browserVersion: deviceInfo.browserVersion,
-        macAddress: deviceInfo.macAddress,
-        ipAddress: deviceInfo.ipAddress,
-        isVerified: user.role === 'admin', // Auto-verify admin devices
-        firstLogin: new Date(),
-        lastLogin: new Date()
-      });
-      await device.save();
-      
-      // If not admin, create verification request
-      if (user.role !== 'admin') {
-        const requestToken = require('crypto').randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id,
-          deviceId: device._id,
-          requestToken: requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress,
-          userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        
-        // Notify admin
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-        
-        return res.status(403).json({
-          success: false,
-          requiresVerification: true,
-          message: 'New device detected. Please wait for admin approval.',
-          deviceInfo: {
-            deviceName: device.deviceName,
-            os: device.os,
-            browser: device.browser,
-            macAddress: device.macAddress
-          }
-        });
-      }
-    } else if (!device.isVerified) {
-      // Device exists but not verified
-      const pendingRequest = await VerificationRequest.findOne({
-        deviceId: device._id,
-        status: 'pending'
-      });
-      
-      if (!pendingRequest) {
-        const requestToken = require('crypto').randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id,
-          deviceId: device._id,
-          requestToken: requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress,
-          userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-      }
-      
-      return res.status(403).json({
-        success: false,
-        requiresVerification: true,
-        message: 'Device pending verification. Please wait for admin approval.',
-        deviceInfo: {
-          deviceName: device.deviceName,
-          os: device.os,
-          browser: device.browser,
-          macAddress: device.macAddress
-        }
-      });
-    }
-    
-    // Update device login info
-    device.lastLogin = new Date();
-    device.loginCount = (device.loginCount || 0) + 1;
-    device.ipAddress = deviceInfo.ipAddress;
-    await device.save();
-    
-    // Create session
-    const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
-    const session = new Session({
-      userId: user._id,
-      deviceId: device._id,
-      token: token,
-      lastActivity: new Date(),
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-      ipAddress: deviceInfo.ipAddress,
-      userAgent: deviceInfo.userAgent
-    });
-    await session.save();
-    
-    // Add session to device
-    device.sessions.push(session._id);
-    await device.save();
-    
-    // Log login history
-    await LoginHistory.create({
-      userId: user._id,
-      email: user.email,
-      role: user.role || 'cashier',
-      success: true,
-      ipAddress: deviceInfo.ipAddress,
-      userAgent: deviceInfo.userAgent,
-      deviceId: deviceInfo.deviceId,
-      macAddress: deviceInfo.macAddress,
-      os: deviceInfo.os,
-      browser: deviceInfo.browser
-    });
-    
-    const userData = {
-      _id: user._id,
-      name: user.name || 'User',
-      email: user.email,
-      role: user.role || 'cashier',
-      isActive: user.isActive !== false,
-      lastLogin: user.lastLogin || new Date()
-    };
-    
-    if (user.role === 'cashier') {
-      if (user.shopId) userData.shopId = user.shopId;
-      if (user.shopName) userData.shopName = user.shopName;
-    }
-    
-    return res.status(200).json({
-      success: true,
-      user: userData,
-      token: token,
-      device: {
-        id: device._id,
-        deviceName: device.deviceName,
-        os: device.os,
-        browser: device.browser,
-        macAddress: device.macAddress,
-        isVerified: device.isVerified
-      },
-      sessionId: session._id,
-      message: 'Login successful',
-      sessionTimeout: 5 // minutes
-    });
-    
-  } catch (error) {
-    // ... existing error handling ...
-  }
-});
-
-// ==================== SESSION MANAGEMENT ROUTES ====================
-
-// Refresh session (ping to keep alive)
-app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
-  try {
-    // Session is already updated by authMiddleware
-    res.json({
-      success: true,
-      message: 'Session refreshed',
-      expiresAt: req.session.expiresAt
-    });
-  } catch (error) {
-    console.error('❌ Session refresh error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh session'
-    });
-  }
-});
-
-// Logout - terminate session
-app.post('/api/auth/logout', authMiddleware, async (req, res) => {
-  try {
-    req.session.isActive = false;
-    req.session.logoutReason = 'manual';
-    await req.session.save();
-    
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-  } catch (error) {
-    console.error('❌ Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to logout'
-    });
-  }
-});
-
-// Get active sessions
-app.get('/api/auth/sessions', authMiddleware, async (req, res) => {
-  try {
-    const sessions = await Session.find({
-      userId: req.user._id,
-      isActive: true
-    }).populate('deviceId');
-    
-    res.json({
-      success: true,
-      data: sessions.map(s => ({
-        id: s._id,
-        device: s.deviceId,
-        lastActivity: s.lastActivity,
-        expiresAt: s.expiresAt,
-        isCurrent: s._id.toString() === req.session._id.toString()
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Error fetching sessions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch sessions'
-    });
-  }
-});
-
-// ==================== EMAIL NOTIFICATIONS ====================
-
-const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
-  if (!emailTransporter) return;
-  
-  const adminEmails = await User.find({ role: 'admin' }).select('email');
-  
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-      <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-        <h1 style="margin: 0;">🔐 New Device Verification</h1>
-      </div>
-      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-        <p><strong>User:</strong> ${user.name} (${user.email})</p>
-        <p><strong>Role:</strong> ${user.role || 'Cashier'}</p>
-        <p><strong>Device:</strong> ${device.deviceName}</p>
-        <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
-        <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
-        <p><strong>MAC Address:</strong> ${device.macAddress}</p>
-        <p><strong>IP Address:</strong> ${device.ipAddress}</p>
-        <p><strong>Request Time:</strong> ${new Date().toLocaleString()}</p>
-        <p><strong>Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
-        
-        <div style="margin: 20px 0; text-align: center;">
-          <p style="font-weight: bold;">Click below to approve or reject this device:</p>
-          <div style="display: flex; gap: 10px; justify-content: center;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/verify-device/${verificationRequest.requestToken}?action=approve" 
-               style="background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px;">
-              ✅ Approve Device
-            </a>
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/verify-device/${verificationRequest.requestToken}?action=reject" 
-               style="background: #EF4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px;">
-              ❌ Reject Device
-            </a>
-          </div>
-          <p style="font-size: 12px; color: #666; margin-top: 10px;">
-            Or go to the Admin Dashboard > Device Verification Requests
-          </p>
-        </div>
-        
-        <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0;">
-          <p style="margin: 0; color: #92400E;">
-            <strong>⚠️ Security Alert:</strong> If you didn't approve this login request, please investigate immediately.
-          </p>
-        </div>
-      </div>
-      <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-        <p>This is an automated security notification from The Place Shop Management System.</p>
-        <p>Please do not reply to this email.</p>
-      </div>
-    </div>
-  `;
-  
-  for (const admin of adminEmails) {
-    try {
-      await emailTransporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: admin.email,
-        subject: `🔐 New Device Login Request - ${user.name}`,
-        html: html
-      });
-    } catch (error) {
-      console.error('Failed to send verification email to admin:', error);
-    }
-  }
-};
-
-const sendDeviceApprovedEmail = async (user, device) => {
-  if (!emailTransporter) return;
-  
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-      <div style="background: #10B981; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-        <h1 style="margin: 0;">✅ Device Approved</h1>
-      </div>
-      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-        <p>Dear ${user.name},</p>
-        <p>Your device has been <strong>approved</strong> for access to The Place Shop Management System.</p>
-        <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-          <p><strong>Device:</strong> ${device.deviceName}</p>
-          <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
-          <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
-          <p><strong>MAC Address:</strong> ${device.macAddress}</p>
-        </div>
-        <p>You can now log in from this device.</p>
-        <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" style="background: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Log In Now</a></p>
-      </div>
-    </div>
-  `;
-  
-  try {
-    await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: '✅ Device Approved for Login',
-      html: html
-    });
-  } catch (error) {
-    console.error('Failed to send device approved email:', error);
-  }
-};
-
-const sendDeviceRejectedEmail = async (user, device, reason) => {
-  if (!emailTransporter) return;
-  
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-      <div style="background: #EF4444; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-        <h1 style="margin: 0;">❌ Device Rejected</h1>
-      </div>
-      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-        <p>Dear ${user.name},</p>
-        <p>Your device request has been <strong>rejected</strong> by an administrator.</p>
-        <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
-          <p><strong>Device:</strong> ${device.deviceName}</p>
-          <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
-          <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
-        </div>
-        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-        <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 15px 0;">
-          <p style="margin: 0; color: #92400E;">
-            <strong>⚠️ Security Alert:</strong> If you didn't request this access, please contact your administrator immediately.
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  try {
-    await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: '❌ Device Rejected for Login',
-      html: html
-    });
-  } catch (error) {
-    console.error('Failed to send device rejected email:', error);
-  }
-};
-
-// ==================== DEVICE VERIFICATION UI ROUTE ====================
-
-// For admin to verify device via link
-app.get('/api/verify-device/:token', async (req, res) => {
-  try {
-    const { token } = req.params;
-    const { action } = req.query;
-    
-    if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid action'
-      });
-    }
-    
-    const verificationRequest = await VerificationRequest.findOne({
-      requestToken: token,
-      status: 'pending'
-    }).populate('userId').populate('deviceId');
-    
-    if (!verificationRequest) {
-      return res.status(404).json({
-        success: false,
-        message: 'Verification request not found or already processed'
-      });
-    }
-    
-    if (new Date() > verificationRequest.expiresAt) {
-      verificationRequest.status = 'expired';
-      await verificationRequest.save();
-      return res.status(400).json({
-        success: false,
-        message: 'Verification request has expired'
-      });
-    }
-    
-    // Get admin from request (they should be logged in)
-    // For simplicity, we'll redirect to the admin dashboard
-    
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/verify-device/${token}?action=${action}`);
-    
-  } catch (error) {
-    console.error('❌ Device verification error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process verification'
-    });
-  }
-});
 // ==================== ENHANCED MODELS ====================
 
 const createModels = () => {
@@ -1485,6 +439,89 @@ const initializeModelsImmediately = () => {
 // Initialize models immediately
 initializeModelsImmediately();
 
+// ==================== DEVICE AND SESSION SCHEMAS (MUST BE AFTER MODELS) ====================
+
+// Device Schema - Track all devices that have logged in
+const deviceSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  deviceId: { type: String, required: true, unique: true },
+  deviceName: { type: String, required: true },
+  deviceType: { type: String, enum: ['desktop', 'laptop', 'mobile', 'tablet', 'unknown'] },
+  os: { type: String },
+  osVersion: { type: String },
+  browser: { type: String },
+  browserVersion: { type: String },
+  macAddress: { type: String },
+  ipAddress: { type: String },
+  lastLogin: { type: Date, default: Date.now },
+  firstLogin: { type: Date, default: Date.now },
+  isVerified: { type: Boolean, default: false },
+  isActive: { type: Boolean, default: true },
+  loginCount: { type: Number, default: 0 },
+  lastActivity: { type: Date, default: Date.now },
+  sessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Session Schema - Track active sessions with inactivity
+const sessionSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+  token: { type: String, required: true, unique: true },
+  lastActivity: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+  isActive: { type: Boolean, default: true },
+  logoutReason: { type: String, enum: ['manual', 'inactivity', 'device_verification', 'admin_terminated'] },
+  ipAddress: { type: String },
+  userAgent: { type: String },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Verification Request Schema - For new device approvals
+const verificationRequestSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+  requestToken: { type: String, required: true, unique: true },
+  expiresAt: { type: Date, required: true },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  approvedAt: { type: Date },
+  rejectionReason: { type: String },
+  ipAddress: { type: String },
+  userAgent: { type: String },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Login History Schema - Track all login attempts
+const loginHistorySchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  email: { type: String },
+  role: { type: String },
+  success: { type: Boolean, default: false },
+  ipAddress: { type: String },
+  userAgent: { type: String },
+  deviceId: { type: String },
+  macAddress: { type: String },
+  os: { type: String },
+  browser: { type: String },
+  location: { type: String },
+  failureReason: { type: String },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Register the new models
+const Device = mongoose.models.Device || mongoose.model('Device', deviceSchema);
+const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
+const VerificationRequest = mongoose.models.VerificationRequest || mongoose.model('VerificationRequest', verificationRequestSchema);
+const LoginHistory = mongoose.models.LoginHistory || mongoose.model('LoginHistory', loginHistorySchema);
+
+// Add to models object for easy access
+models.Device = Device;
+models.Session = Session;
+models.VerificationRequest = VerificationRequest;
+models.LoginHistory = LoginHistory;
+
 // ==================== STOCK MONITORING SYSTEM (SERVERLESS COMPATIBLE) ====================
 
 // Send stock alert email
@@ -1770,6 +807,196 @@ const initializeEmail = async () => {
   }
 };
 
+// ==================== DEVICE FINGERPRINTING UTILITIES ====================
+
+const getDeviceInfo = (req) => {
+  const userAgent = req.headers['user-agent'] || '';
+  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
+  
+  // Parse OS
+  let os = 'Unknown';
+  let osVersion = 'Unknown';
+  let deviceType = 'unknown';
+  let deviceName = 'Unknown Device';
+  
+  // Detect OS
+  if (userAgent.includes('Windows NT 10.0')) {
+    os = 'Windows 10';
+    osVersion = '10.0';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.1')) {
+    os = 'Windows 7';
+    osVersion = '6.1';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.2')) {
+    os = 'Windows 8';
+    osVersion = '6.2';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Windows NT 6.3')) {
+    os = 'Windows 8.1';
+    osVersion = '6.3';
+    deviceType = 'desktop';
+    deviceName = 'Windows PC';
+  } else if (userAgent.includes('Mac OS X')) {
+    os = 'macOS';
+    const match = userAgent.match(/Mac OS X (\d+[._]\d+)/);
+    if (match) osVersion = match[1].replace('_', '.');
+    deviceType = 'desktop';
+    deviceName = 'Mac';
+  } else if (userAgent.includes('iPhone')) {
+    os = 'iOS';
+    deviceType = 'mobile';
+    deviceName = 'iPhone';
+  } else if (userAgent.includes('iPad')) {
+    os = 'iOS';
+    deviceType = 'tablet';
+    deviceName = 'iPad';
+  } else if (userAgent.includes('Android')) {
+    os = 'Android';
+    deviceType = 'mobile';
+    const match = userAgent.match(/Android (\d+[._]\d+)/);
+    if (match) osVersion = match[1];
+    deviceName = 'Android Device';
+  } else if (userAgent.includes('Linux')) {
+    os = 'Linux';
+    deviceType = 'desktop';
+    deviceName = 'Linux PC';
+  }
+  
+  // Parse Browser
+  let browser = 'Unknown';
+  let browserVersion = 'Unknown';
+  if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
+    browser = 'Chrome';
+    const match = userAgent.match(/Chrome\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Firefox')) {
+    browser = 'Firefox';
+    const match = userAgent.match(/Firefox\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+    browser = 'Safari';
+    const match = userAgent.match(/Version\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Edg')) {
+    browser = 'Edge';
+    const match = userAgent.match(/Edg\/(\d+)/);
+    if (match) browserVersion = match[1];
+  } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
+    browser = 'Opera';
+    const match = userAgent.match(/Opera\/(\d+)/) || userAgent.match(/OPR\/(\d+)/);
+    if (match) browserVersion = match[1];
+  }
+  
+  // Generate MAC address from userAgent + IP (fallback since we can't get real MAC from browser)
+  const macFallback = require('crypto')
+    .createHash('sha256')
+    .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
+    .digest('hex')
+    .substring(0, 17)
+    .toUpperCase()
+    .replace(/(.{2})(?=.)/g, '$1:');
+  
+  return {
+    userAgent,
+    ipAddress: ip,
+    os,
+    osVersion,
+    browser,
+    browserVersion,
+    deviceType,
+    deviceName,
+    macAddress: macFallback,
+    deviceId: require('crypto')
+      .createHash('sha256')
+      .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
+      .digest('hex')
+      .substring(0, 32)
+  };
+};
+
+// ==================== AUTHENTICATION MIDDLEWARE WITH SESSION CHECK ====================
+
+const authMiddleware = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
+    
+    // Check if session exists and is active
+    const session = await Session.findOne({ 
+      token: token, 
+      isActive: true,
+      userId: decoded.userId
+    });
+    
+    if (!session) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Session expired or invalid. Please login again.',
+        code: 'SESSION_EXPIRED'
+      });
+    }
+    
+    // Check if session expired
+    if (new Date() > session.expiresAt) {
+      session.isActive = false;
+      session.logoutReason = 'inactivity';
+      await session.save();
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Session expired due to inactivity. Please login again.',
+        code: 'SESSION_EXPIRED'
+      });
+    }
+    
+    // Update last activity
+    session.lastActivity = new Date();
+    await session.save();
+    
+    // Update device last activity
+    await Device.findByIdAndUpdate(session.deviceId, {
+      lastActivity: new Date()
+    });
+    
+    // Get user
+    let user = await models.User.findById(decoded.userId);
+    if (!user) {
+      user = await models.Cashier.findById(decoded.userId);
+    }
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    
+    if (user.isActive === false || user.status === 'inactive') {
+      return res.status(403).json({ success: false, message: 'Account is deactivated' });
+    }
+    
+    req.user = user;
+    req.session = session;
+    req.deviceId = session.deviceId;
+    next();
+    
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired' });
+    }
+    console.error('❌ Auth middleware error:', error);
+    return res.status(500).json({ success: false, message: 'Authentication error' });
+  }
+};
+
 // ==================== MIDDLEWARE - Database Connection ====================
 
 // Middleware to ensure database connection for each request
@@ -1873,13 +1100,11 @@ const CalculationUtils = {
     return safeRevenue > 0 ? (safeProfit / safeRevenue) * 100 : 0;
   },
 
-  // FIXED: COGS should only recognize cost for what was actually paid
   calculateCOGS: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
       const totalCost = CalculationUtils.safeNumber(transaction.cost);
       
-      // For credit transactions, only recognize COGS for the paid portion
       if (transaction.isCreditTransaction) {
         const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount);
         const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid);
@@ -1887,7 +1112,6 @@ const CalculationUtils = {
         return sum + totalCost * paidRatio;
       }
       
-      // For credit payments (payments made on existing credit), no COGS
       if (transaction.isCreditPayment) {
         return sum;
       }
@@ -1896,21 +1120,17 @@ const CalculationUtils = {
     }, 0);
   },
 
-  // FIXED: Revenue should include all payments made for credit transactions
   calculateRevenue: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
-      // For credit payments, use the payment amount
       if (transaction.isCreditPayment) {
         return sum + CalculationUtils.safeNumber(transaction.totalAmount);
       }
       
-      // For credit transactions, use amount paid so far
       if (transaction.isCreditTransaction) {
         return sum + CalculationUtils.safeNumber(transaction.amountPaid);
       }
       
-      // For regular transactions, use total amount
       return sum + CalculationUtils.safeNumber(transaction.totalAmount);
     }, 0);
   },
@@ -1942,7 +1162,6 @@ const CalculationUtils = {
               itemCost = CalculationUtils.safeNumber(product.buyingPrice);
             }
           } else if (item.price && CalculationUtils.safeNumber(item.price) > 0) {
-            // Estimate cost as 30% of price as fallback
             itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
           }
           totalCost += itemCost * quantity;
@@ -1956,17 +1175,15 @@ const CalculationUtils = {
     }
   },
 
-  // FIXED: Process transaction with correct profit and revenue recognition
   processSingleTransaction: async (transaction, products = []) => {
     try {
       if (!transaction) return CalculationUtils.createFallbackTransaction();
 
-      // Handle credit payments (payments on existing credit)
       if (transaction.isCreditPayment) {
         return {
           ...transaction,
           totalAmount: CalculationUtils.safeNumber(transaction.totalAmount),
-          cost: 0, // Credit payments have no COGS
+          cost: 0,
           profit: CalculationUtils.safeNumber(transaction.totalAmount),
           profitMargin: 100,
           isCreditTransaction: false,
@@ -1993,14 +1210,11 @@ const CalculationUtils = {
       const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) ||
                          CalculationUtils.safeNumber(transaction.amount) || 0;
      
-      // Calculate full cost of goods sold (total cost for all items)
       const fullCost = await CalculationUtils.calculateCostFromItems(transaction, products);
      
-      // Get cumulative amount paid (including upfront + all payments)
       let cumulativePaid = CalculationUtils.safeNumber(transaction.amountPaid) ||
                           CalculationUtils.safeNumber(transaction.paidAmount) || 0;
       
-      // If there's payment history, use it to calculate total paid
       if (transaction.paymentHistory && Array.isArray(transaction.paymentHistory)) {
         const historyTotal = transaction.paymentHistory.reduce((sum, p) => 
           sum + CalculationUtils.safeNumber(p.amount), 0);
@@ -2009,18 +1223,10 @@ const CalculationUtils = {
         }
       }
       
-      // For credit transactions, recognized revenue is the cumulative amount paid
-      // NOT just the upfront payment
       const recognizedRevenue = isCredit ? Math.min(cumulativePaid, totalAmount) : totalAmount;
-      
-      // Outstanding revenue is the remaining balance
       const outstandingRevenue = isCredit ? Math.max(0, totalAmount - cumulativePaid) : 0;
-      
-      // Immediate revenue is the upfront payment (for tracking cashier performance)
       const immediateRevenue = isCredit ? CalculationUtils.safeNumber(transaction.upfrontPaymentAmount || cumulativePaid) : totalAmount;
       
-      // FIXED: Profit should be calculated based on the recognized revenue
-      // But we need to prorate the cost based on what portion is recognized
       let cost = 0;
       if (isCredit) {
         const paidRatio = totalAmount > 0 ? Math.min(recognizedRevenue / totalAmount, 1) : 0;
@@ -2153,7 +1359,6 @@ const CalculationUtils = {
       }
     });
 
-    // FIXED: Outstanding credit from credits collection (not transactions)
     const outstandingCredit = credits
       .filter(credit => credit.status !== 'paid' &&
         (!selectedShop || selectedShop === 'all' ||
@@ -2757,6 +1962,7 @@ app.get('/api/debug/email-status', async (req, res) => {
 
 // ==================== AUTHENTICATION ROUTES ====================
 
+// Request secure code
 app.post('/api/auth/request-code',
   [
     body('email').isEmail().normalizeEmail()
@@ -2838,6 +2044,7 @@ app.post('/api/auth/request-code',
   }
 );
 
+// Verify secure code - FIXED VERSION (works with Device/Session features)
 app.post('/api/auth/verify-code',
   [
     body('email').isEmail().normalizeEmail(),
@@ -2947,21 +2154,10 @@ app.post('/api/auth/verify-code',
         console.error('❌ Error marking code as used:', saveError);
       }
 
-      let user = null;
-      if (models.User) {
-        try {
-          user = await models.User.findOne({ email });
-        } catch (userError) {
-          console.error('❌ Error finding user in User model:', userError);
-        }
-      }
-
-      if (!user && models.Cashier) {
-        try {
-          user = await models.Cashier.findOne({ email });
-        } catch (cashierError) {
-          console.error('❌ Error finding user in Cashier model:', cashierError);
-        }
+      // Find user
+      let user = await models.User.findOne({ email });
+      if (!user) {
+        user = await models.Cashier.findOne({ email });
       }
 
       if (!user) {
@@ -2978,13 +2174,107 @@ app.post('/api/auth/verify-code',
         });
       }
 
-      try {
-        user.lastLogin = new Date();
-        await user.save();
-      } catch (updateError) {
-        console.error('❌ Error updating last login:', updateError);
+      // Get device info
+      const deviceInfo = getDeviceInfo(req);
+      
+      // Check if device exists and is verified
+      let device = await Device.findOne({ 
+        userId: user._id, 
+        deviceId: deviceInfo.deviceId 
+      });
+
+      if (!device) {
+        // New device - create and require verification (auto-verify admin)
+        device = new Device({
+          userId: user._id,
+          deviceId: deviceInfo.deviceId,
+          deviceName: deviceInfo.deviceName,
+          deviceType: deviceInfo.deviceType,
+          os: deviceInfo.os,
+          osVersion: deviceInfo.osVersion,
+          browser: deviceInfo.browser,
+          browserVersion: deviceInfo.browserVersion,
+          macAddress: deviceInfo.macAddress,
+          ipAddress: deviceInfo.ipAddress,
+          isVerified: user.role === 'admin', // Auto-verify admin devices
+          firstLogin: new Date(),
+          lastLogin: new Date()
+        });
+        await device.save();
+        
+        // If not admin, create verification request
+        if (user.role !== 'admin') {
+          const requestToken = require('crypto').randomBytes(32).toString('hex');
+          const verificationRequest = new VerificationRequest({
+            userId: user._id,
+            deviceId: device._id,
+            requestToken: requestToken,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            ipAddress: deviceInfo.ipAddress,
+            userAgent: deviceInfo.userAgent
+          });
+          await verificationRequest.save();
+          
+          // Notify admin
+          await sendDeviceVerificationEmail(user, device, verificationRequest);
+          
+          return res.status(403).json({
+            success: false,
+            requiresVerification: true,
+            message: 'New device detected. Please wait for admin approval.',
+            deviceInfo: {
+              deviceName: device.deviceName,
+              os: device.os,
+              browser: device.browser,
+              macAddress: device.macAddress
+            }
+          });
+        }
+      } else if (!device.isVerified) {
+        // Device exists but not verified
+        const pendingRequest = await VerificationRequest.findOne({
+          deviceId: device._id,
+          status: 'pending'
+        });
+        
+        if (!pendingRequest) {
+          const requestToken = require('crypto').randomBytes(32).toString('hex');
+          const verificationRequest = new VerificationRequest({
+            userId: user._id,
+            deviceId: device._id,
+            requestToken: requestToken,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            ipAddress: deviceInfo.ipAddress,
+            userAgent: deviceInfo.userAgent
+          });
+          await verificationRequest.save();
+          await sendDeviceVerificationEmail(user, device, verificationRequest);
+        }
+        
+        return res.status(403).json({
+          success: false,
+          requiresVerification: true,
+          message: 'Device pending verification. Please wait for admin approval.',
+          deviceInfo: {
+            deviceName: device.deviceName,
+            os: device.os,
+            browser: device.browser,
+            macAddress: device.macAddress
+          }
+        });
       }
 
+      // Update device login info
+      device.lastLogin = new Date();
+      device.loginCount = (device.loginCount || 0) + 1;
+      device.ipAddress = deviceInfo.ipAddress;
+      await device.save();
+
+      // Update user last login
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Generate token
       let token;
       try {
         token = generateAuthToken(user._id, user.email, user.role || 'cashier');
@@ -2995,6 +2285,36 @@ app.post('/api/auth/verify-code',
           message: 'Error generating authentication token. Please try again.'
         });
       }
+
+      // Create session
+      const session = new Session({
+        userId: user._id,
+        deviceId: device._id,
+        token: token,
+        lastActivity: new Date(),
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent
+      });
+      await session.save();
+      
+      // Add session to device
+      device.sessions.push(session._id);
+      await device.save();
+
+      // Log login history
+      await LoginHistory.create({
+        userId: user._id,
+        email: user.email,
+        role: user.role || 'cashier',
+        success: true,
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent,
+        deviceId: deviceInfo.deviceId,
+        macAddress: deviceInfo.macAddress,
+        os: deviceInfo.os,
+        browser: deviceInfo.browser
+      });
 
       const userData = {
         _id: user._id,
@@ -3018,8 +2338,19 @@ app.post('/api/auth/verify-code',
         success: true,
         user: userData,
         token: token,
-        message: 'Login successful'
+        device: {
+          id: device._id,
+          deviceName: device.deviceName,
+          os: device.os,
+          browser: device.browser,
+          macAddress: device.macAddress,
+          isVerified: device.isVerified
+        },
+        sessionId: session._id,
+        message: 'Login successful',
+        sessionTimeout: 5 // minutes
       });
+
     } catch (error) {
       console.error('❌ Unexpected error in verify-code:', error);
       return res.status(500).json({
@@ -3030,6 +2361,561 @@ app.post('/api/auth/verify-code',
     }
   }
 );
+
+// ==================== EMAIL NOTIFICATIONS ====================
+
+const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
+  if (!emailTransporter) return;
+  
+  const adminEmails = await models.User.find({ role: 'admin' }).select('email');
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+      <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+        <h1 style="margin: 0;">🔐 New Device Verification</h1>
+      </div>
+      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <p><strong>User:</strong> ${user.name} (${user.email})</p>
+        <p><strong>Role:</strong> ${user.role || 'Cashier'}</p>
+        <p><strong>Device:</strong> ${device.deviceName}</p>
+        <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
+        <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
+        <p><strong>MAC Address:</strong> ${device.macAddress}</p>
+        <p><strong>IP Address:</strong> ${device.ipAddress}</p>
+        <p><strong>Request Time:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
+        
+        <div style="margin: 20px 0; text-align: center;">
+          <p style="font-weight: bold;">Click below to approve or reject this device:</p>
+          <div style="display: flex; gap: 10px; justify-content: center;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/verify-device/${verificationRequest.requestToken}?action=approve" 
+               style="background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px;">
+              ✅ Approve Device
+            </a>
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/verify-device/${verificationRequest.requestToken}?action=reject" 
+               style="background: #EF4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px;">
+              ❌ Reject Device
+            </a>
+          </div>
+          <p style="font-size: 12px; color: #666; margin-top: 10px;">
+            Or go to the Admin Dashboard > Device Verification Requests
+          </p>
+        </div>
+        
+        <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0;">
+          <p style="margin: 0; color: #92400E;">
+            <strong>⚠️ Security Alert:</strong> If you didn't approve this login request, please investigate immediately.
+          </p>
+        </div>
+      </div>
+      <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
+        <p>This is an automated security notification from The Place Shop Management System.</p>
+        <p>Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+  
+  for (const admin of adminEmails) {
+    try {
+      await emailTransporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: admin.email,
+        subject: `🔐 New Device Login Request - ${user.name}`,
+        html: html
+      });
+    } catch (error) {
+      console.error('Failed to send verification email to admin:', error);
+    }
+  }
+};
+
+// ==================== DEVICE VERIFICATION ROUTES ====================
+
+// Admin - Get pending verification requests
+app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required' 
+      });
+    }
+    
+    const requests = await VerificationRequest.find({ status: 'pending' })
+      .populate('userId', 'name email role')
+      .populate('deviceId')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: requests.map(req => ({
+        id: req._id,
+        user: req.userId,
+        device: req.deviceId,
+        requestToken: req.requestToken,
+        createdAt: req.createdAt,
+        expiresAt: req.expiresAt,
+        ipAddress: req.ipAddress,
+        userAgent: req.userAgent
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching verification requests:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch verification requests'
+    });
+  }
+});
+
+// Admin - Approve or reject device verification
+app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required' 
+      });
+    }
+    
+    const { requestId, action, rejectionReason } = req.body;
+    
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action. Must be "approve" or "reject"'
+      });
+    }
+    
+    const verificationRequest = await VerificationRequest.findById(requestId)
+      .populate('userId')
+      .populate('deviceId');
+    
+    if (!verificationRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Verification request not found'
+      });
+    }
+    
+    if (verificationRequest.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Request already ${verificationRequest.status}`
+      });
+    }
+    
+    if (new Date() > verificationRequest.expiresAt) {
+      verificationRequest.status = 'expired';
+      await verificationRequest.save();
+      return res.status(400).json({
+        success: false,
+        message: 'Verification request has expired'
+      });
+    }
+    
+    if (action === 'approve') {
+      verificationRequest.status = 'approved';
+      verificationRequest.approvedBy = req.user._id;
+      verificationRequest.approvedAt = new Date();
+      
+      // Mark device as verified
+      await Device.findByIdAndUpdate(verificationRequest.deviceId, {
+        isVerified: true
+      });
+      
+      // Send notification to user
+      await sendDeviceApprovedEmail(verificationRequest.userId, verificationRequest.deviceId);
+      
+    } else {
+      verificationRequest.status = 'rejected';
+      verificationRequest.approvedBy = req.user._id;
+      verificationRequest.approvedAt = new Date();
+      verificationRequest.rejectionReason = rejectionReason || 'No reason provided';
+      
+      // Send notification to user
+      await sendDeviceRejectedEmail(verificationRequest.userId, verificationRequest.deviceId, rejectionReason);
+    }
+    
+    await verificationRequest.save();
+    
+    res.json({
+      success: true,
+      message: `Device ${action}d successfully`,
+      data: verificationRequest
+    });
+    
+  } catch (error) {
+    console.error('❌ Error verifying device:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify device',
+      error: error.message
+    });
+  }
+});
+
+const sendDeviceApprovedEmail = async (user, device) => {
+  if (!emailTransporter) return;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+      <div style="background: #10B981; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+        <h1 style="margin: 0;">✅ Device Approved</h1>
+      </div>
+      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <p>Dear ${user.name},</p>
+        <p>Your device has been <strong>approved</strong> for access to The Place Shop Management System.</p>
+        <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+          <p><strong>Device:</strong> ${device.deviceName}</p>
+          <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
+          <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
+          <p><strong>MAC Address:</strong> ${device.macAddress}</p>
+        </div>
+        <p>You can now log in from this device.</p>
+        <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" style="background: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Log In Now</a></p>
+      </div>
+    </div>
+  `;
+  
+  try {
+    await emailTransporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: '✅ Device Approved for Login',
+      html: html
+    });
+  } catch (error) {
+    console.error('Failed to send device approved email:', error);
+  }
+};
+
+const sendDeviceRejectedEmail = async (user, device, reason) => {
+  if (!emailTransporter) return;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
+      <div style="background: #EF4444; padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
+        <h1 style="margin: 0;">❌ Device Rejected</h1>
+      </div>
+      <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <p>Dear ${user.name},</p>
+        <p>Your device request has been <strong>rejected</strong> by an administrator.</p>
+        <div style="background: #F3F4F6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+          <p><strong>Device:</strong> ${device.deviceName}</p>
+          <p><strong>OS:</strong> ${device.os} ${device.osVersion}</p>
+          <p><strong>Browser:</strong> ${device.browser} ${device.browserVersion}</p>
+        </div>
+        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+        <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 15px 0;">
+          <p style="margin: 0; color: #92400E;">
+            <strong>⚠️ Security Alert:</strong> If you didn't request this access, please contact your administrator immediately.
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  try {
+    await emailTransporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: '❌ Device Rejected for Login',
+      html: html
+    });
+  } catch (error) {
+    console.error('Failed to send device rejected email:', error);
+  }
+};
+
+// Get user's devices
+app.get('/api/auth/devices', authMiddleware, async (req, res) => {
+  try {
+    const devices = await Device.find({ 
+      userId: req.user._id,
+      isActive: true
+    }).sort({ lastLogin: -1 });
+    
+    res.json({
+      success: true,
+      data: devices.map(d => ({
+        id: d._id,
+        deviceName: d.deviceName,
+        deviceType: d.deviceType,
+        os: d.os,
+        browser: d.browser,
+        macAddress: d.macAddress,
+        ipAddress: d.ipAddress,
+        isVerified: d.isVerified,
+        lastLogin: d.lastLogin,
+        firstLogin: d.firstLogin,
+        loginCount: d.loginCount,
+        isCurrent: d._id.toString() === req.deviceId?.toString()
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching devices:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch devices'
+    });
+  }
+});
+
+// Revoke device access
+app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    const device = await Device.findOne({ 
+      _id: deviceId, 
+      userId: req.user._id 
+    });
+    
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: 'Device not found'
+      });
+    }
+    
+    // Don't allow revoking current device
+    if (device._id.toString() === req.deviceId?.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot revoke access for current device'
+      });
+    }
+    
+    device.isActive = false;
+    await device.save();
+    
+    // Terminate all sessions for this device
+    await Session.updateMany(
+      { deviceId: device._id, isActive: true },
+      { isActive: false, logoutReason: 'admin_terminated' }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Device access revoked successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error revoking device:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to revoke device access'
+    });
+  }
+});
+
+// Check if device is verified
+app.post('/api/auth/check-device', async (req, res) => {
+  try {
+    const { email, deviceInfo } = req.body;
+    
+    let user = await models.User.findOne({ email });
+    if (!user) {
+      user = await models.Cashier.findOne({ email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    // Find or create device
+    let device = await Device.findOne({ 
+      userId: user._id, 
+      deviceId: deviceInfo.deviceId 
+    });
+    
+    if (!device) {
+      // New device - create verification request
+      const requestToken = require('crypto').randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      
+      const newDevice = new Device({
+        userId: user._id,
+        deviceId: deviceInfo.deviceId,
+        deviceName: deviceInfo.deviceName || 'Unknown Device',
+        deviceType: deviceInfo.deviceType || 'unknown',
+        os: deviceInfo.os,
+        osVersion: deviceInfo.osVersion,
+        browser: deviceInfo.browser,
+        browserVersion: deviceInfo.browserVersion,
+        macAddress: deviceInfo.macAddress,
+        ipAddress: deviceInfo.ipAddress,
+        isVerified: false,
+        firstLogin: new Date(),
+        lastLogin: new Date()
+      });
+      await newDevice.save();
+      
+      const verificationRequest = new VerificationRequest({
+        userId: user._id,
+        deviceId: newDevice._id,
+        requestToken: requestToken,
+        expiresAt: expiresAt,
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent
+      });
+      await verificationRequest.save();
+      
+      // Send email notification to admin
+      await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
+      
+      return res.json({
+        success: false,
+        requiresVerification: true,
+        message: 'New device detected. Please wait for admin approval.',
+        requestId: verificationRequest._id,
+        deviceInfo: {
+          deviceName: newDevice.deviceName,
+          os: newDevice.os,
+          browser: newDevice.browser,
+          macAddress: newDevice.macAddress,
+          ipAddress: newDevice.ipAddress,
+          deviceType: newDevice.deviceType
+        }
+      });
+    }
+    
+    if (!device.isVerified) {
+      // Device exists but not verified
+      const pendingRequest = await VerificationRequest.findOne({
+        deviceId: device._id,
+        status: 'pending'
+      });
+      
+      if (!pendingRequest) {
+        // Create new verification request
+        const requestToken = require('crypto').randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        
+        const newRequest = new VerificationRequest({
+          userId: user._id,
+          deviceId: device._id,
+          requestToken: requestToken,
+          expiresAt: expiresAt,
+          ipAddress: deviceInfo.ipAddress,
+          userAgent: deviceInfo.userAgent
+        });
+        await newRequest.save();
+        
+        await sendDeviceVerificationEmail(user, device, newRequest);
+      }
+      
+      return res.json({
+        success: false,
+        requiresVerification: true,
+        message: 'Device pending verification. Please wait for admin approval.',
+        deviceInfo: {
+          deviceName: device.deviceName,
+          os: device.os,
+          browser: device.browser,
+          macAddress: device.macAddress,
+          ipAddress: device.ipAddress,
+          deviceType: device.deviceType
+        }
+      });
+    }
+    
+    // Device is verified - update login info
+    device.lastLogin = new Date();
+    device.loginCount = (device.loginCount || 0) + 1;
+    device.ipAddress = deviceInfo.ipAddress;
+    await device.save();
+    
+    return res.json({
+      success: true,
+      message: 'Device verified',
+      device: {
+        id: device._id,
+        deviceName: device.deviceName,
+        isVerified: device.isVerified
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Device check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check device',
+      error: error.message
+    });
+  }
+});
+
+// ==================== SESSION MANAGEMENT ROUTES ====================
+
+// Refresh session (ping to keep alive)
+app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Session refreshed',
+      expiresAt: req.session.expiresAt
+    });
+  } catch (error) {
+    console.error('❌ Session refresh error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh session'
+    });
+  }
+});
+
+// Logout - terminate session
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
+  try {
+    req.session.isActive = false;
+    req.session.logoutReason = 'manual';
+    await req.session.save();
+    
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to logout'
+    });
+  }
+});
+
+// Get active sessions
+app.get('/api/auth/sessions', authMiddleware, async (req, res) => {
+  try {
+    const sessions = await Session.find({
+      userId: req.user._id,
+      isActive: true
+    }).populate('deviceId');
+    
+    res.json({
+      success: true,
+      data: sessions.map(s => ({
+        id: s._id,
+        device: s.deviceId,
+        lastActivity: s.lastActivity,
+        expiresAt: s.expiresAt,
+        isCurrent: s._id.toString() === req.session._id.toString()
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching sessions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sessions'
+    });
+  }
+});
+
+// ==================== CASHIER LOGIN ROUTE ====================
 
 app.post('/api/auth/cashier/login', async (req, res) => {
   try {
@@ -3176,7 +3062,6 @@ app.get('/api/products', async (req, res) => {
     console.log('📦 Fetching products...');
     console.log('📦 Models available:', Object.keys(models));
     
-    // Ensure models exist
     if (!models.Product) {
       console.log('⚠️ Product model not found, initializing...');
       models = createModels();
@@ -3254,16 +3139,13 @@ app.put('/api/products/:id', async (req, res) => {
       });
     }
 
-    // Check if stock was updated to critical levels
     const oldStock = oldProduct?.currentStock || 0;
     const newStock = product.currentStock || 0;
     const minStock = product.minStockLevel || 5;
    
-    // Send alert if stock became critical
     if (newStock === 0 || (oldStock > minStock && newStock <= minStock)) {
       const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
       
-      // Check rate limiting (6 hours)
       const now = new Date();
       const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
       const lastAlert = product.lastStockAlertSent;
@@ -3274,7 +3156,6 @@ app.put('/api/products/:id', async (req, res) => {
           shopName: product.shop?.name || product.shopName || 'Unknown Shop'
         }], alertType);
         
-        // Update last alert timestamp
         product.lastStockAlertSent = now;
         await product.save();
       }
@@ -3327,7 +3208,6 @@ app.get('/api/shops', async (req, res) => {
   try {
     console.log('🏪 Fetching shops...');
     
-    // Ensure models exist
     if (!models.Shop) {
       console.log('⚠️ Shop model not found, initializing...');
       models = createModels();
@@ -4176,7 +4056,6 @@ app.patch('/api/credits/:id/payment', async (req, res) => {
     credit.updatedAt = new Date();
     await credit.save();
 
-    // Update the original transaction with new payment info
     if (credit.transactionId) {
       await models.Transaction.findByIdAndUpdate(credit.transactionId, {
         amountPaid: newAmountPaid,
@@ -4260,7 +4139,6 @@ app.post('/api/transactions', async (req, res) => {
       totalAmount += itemTotalPrice;
       totalCost += itemCost;
 
-      // REDUCE STOCK AND CHECK FOR ALERTS
       if (item.productId && !transactionData.isCreditPayment) {
         try {
           const product = await models.Product.findById(item.productId);
@@ -4275,12 +4153,10 @@ app.post('/api/transactions', async (req, res) => {
 
             console.log(`📦 Stock reduced for ${product.name}: ${currentStock} -> ${newStock} (sold: ${quantity})`);
 
-            // Check if stock is now low or out of stock (with rate limiting)
             const minStockLevel = CalculationUtils.safeNumber(product.minStockLevel || 5);
             if (newStock === 0 || (newStock <= minStockLevel && newStock > 0)) {
               const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
               
-              // Rate limiting: Check if alert should be sent (6 hours cooldown)
               const now = new Date();
               const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
               const lastAlert = product.lastStockAlertSent;
@@ -4291,7 +4167,6 @@ app.post('/api/transactions', async (req, res) => {
                   shopName: product.shop?.name || product.shopName || 'Unknown Shop'
                 }], alertType);
                 
-                // Update last alert timestamp
                 await models.Product.findByIdAndUpdate(item.productId, {
                   lastStockAlertSent: now
                 });
@@ -4339,7 +4214,6 @@ app.post('/api/transactions', async (req, res) => {
       }
     }
 
-    // Calculate profit based on recognized revenue
     const profit = recognizedRevenue - totalCost;
     const profitMargin = recognizedRevenue > 0 ? (profit / recognizedRevenue) * 100 : 0;
 
@@ -4374,7 +4248,6 @@ app.post('/api/transactions', async (req, res) => {
         transactionData.upfrontPaymentSplit = transactionData.upfrontPaymentSplit;
       }
      
-      // FIXED: Payment split should correctly allocate payments
       if (amountPaidNow > 0) {
         if (transactionData.upfrontPaymentMethod === 'cash') {
           transactionData.paymentSplit.cash = amountPaidNow;
@@ -4389,11 +4262,9 @@ app.post('/api/transactions', async (req, res) => {
         transactionData.paymentSplit.credit = totalAmount;
       }
      
-      // Validate payment split totals
       const totalSplit = transactionData.paymentSplit.cash + transactionData.paymentSplit.bank_mpesa + transactionData.paymentSplit.credit;
       if (Math.abs(totalSplit - totalAmount) > 0.01) {
         console.warn('⚠️ Payment split does not equal total amount:', { totalSplit, totalAmount });
-        // Auto-correct by adjusting credit
         transactionData.paymentSplit.credit = totalAmount - transactionData.paymentSplit.cash - transactionData.paymentSplit.bank_mpesa;
       }
      
@@ -4555,7 +4426,6 @@ async function handleCreditPayment(transactionData, res) {
     originalCredit.updatedAt = new Date();
     await originalCredit.save();
 
-    // FIXED: Update the original transaction's payment info
     if (originalCredit.transactionId) {
       await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
         amountPaid: newAmountPaid,
@@ -4689,7 +4559,11 @@ app.get('/api/debug/collections', async (req, res) => {
       Credit: !!models.Credit,
       Product: !!models.Product,
       Shop: !!models.Shop,
-      Expense: !!models.Expense
+      Expense: !!models.Expense,
+      Device: !!models.Device,
+      Session: !!models.Session,
+      VerificationRequest: !!models.VerificationRequest,
+      LoginHistory: !!models.LoginHistory
     };
     
     let users = [];
