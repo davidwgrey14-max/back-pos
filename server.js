@@ -1,4 +1,4 @@
-// server.js - Serverless Optimized for Vercel
+// server.js - Serverless Optimized for Vercel with Stock Monitoring
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -53,6 +53,7 @@ const createModels = () => {
     shopName: String,
     description: String,
     isActive: { type: Boolean, default: true },
+    lastStockAlertSent: { type: Date, default: null }, // Track last alert for rate limiting
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -234,6 +235,193 @@ const createModels = () => {
 
   console.log('✅ All enhanced models created successfully');
   return models;
+};
+
+// ==================== STOCK MONITORING SYSTEM (SERVERLESS COMPATIBLE) ====================
+
+// Send stock alert email
+const sendStockAlertEmail = async (products, alertType) => {
+  if (!emailTransporter) {
+    console.log('⚠️ Email service not configured - skipping stock alert');
+    return false;
+  }
+
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+   
+    const subject = alertType === 'out_of_stock'
+      ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
+      : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
+
+    const productList = products.map(product => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.category || 'Uncategorized'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.currentStock}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.minStockLevel || 5}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.shopName || 'Unknown Shop'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+        <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">
+            ${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}
+          </h1>
+          <p style="margin: 10px 0 0 0; font-size: 16px;">
+            ${process.env.APP_NAME || 'Shop Management System'} - Automated Alert
+          </p>
+        </div>
+       
+        <div style="padding: 20px; background: #f9f9f9;">
+          <p>Dear Baby Girl Pamela,</p>
+          <p>
+            ${alertType === 'out_of_stock'
+              ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
+              : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>. Please consider restocking soon.`
+            }
+          </p>
+         
+          <div style="margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+              <thead>
+                <tr style="background: #333; color: white;">
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Product Name</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Category</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Current Stock</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min Level</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Shop</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${productList}
+              </tbody>
+            </table>
+          </div>
+         
+          <p>
+            <strong>Action Required:</strong> Please log in to the system and update the stock levels for these products.
+          </p>
+         
+          <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
+            <p style="margin: 0;">
+              <strong>Note:</strong> This is an automated alert.
+              ${alertType === 'out_of_stock'
+                ? 'Reminders will be sent every 6 hours until stock is updated.'
+                : 'You will receive notifications for critical stock levels.'
+              }
+            </p>
+          </div>
+         
+          <p>
+            Best regards,<br>
+            <strong>${process.env.APP_NAME || 'Shop Management'} System</strong>
+          </p>
+        </div>
+       
+        <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">
+            This email was automatically generated by the Inventory Management System.<br>
+            Please do not reply to this message.
+          </p>
+        </div>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
+      to: adminEmail,
+      subject: subject,
+      html: html,
+      priority: 'high'
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ ${alertType === 'out_of_stock' ? 'Out of stock' : 'Low stock'} alert sent for ${products.length} products`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending stock alert email:', error);
+    return false;
+  }
+};
+
+// Check stock levels and send alerts - SERVERLESS COMPATIBLE
+const checkStockLevels = async () => {
+  try {
+    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
+   
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
+
+    const outOfStockProducts = [];
+    const lowStockProducts = [];
+
+    products.forEach(product => {
+      const currentStock = product.currentStock || 0;
+      const minStockLevel = product.minStockLevel || 5;
+     
+      if (currentStock === 0) {
+        outOfStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      } else if (currentStock <= minStockLevel) {
+        lowStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      }
+    });
+
+    console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
+
+    // Send out of stock notifications (always send for out of stock)
+    if (outOfStockProducts.length > 0) {
+      console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
+      await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
+    }
+
+    // Send low stock notifications with rate limiting (6 hours)
+    if (lowStockProducts.length > 0) {
+      const now = new Date();
+      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      
+      // Filter products that haven't had an alert in the last 6 hours
+      const productsToAlert = [];
+      for (const product of lowStockProducts) {
+        const dbProduct = await models.Product.findById(product._id);
+        if (!dbProduct) continue;
+        
+        const lastAlert = dbProduct.lastStockAlertSent;
+        if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
+          productsToAlert.push(product);
+          // Update last alert timestamp
+          dbProduct.lastStockAlertSent = now;
+          await dbProduct.save();
+        }
+      }
+
+      if (productsToAlert.length > 0) {
+        console.log(`📧 [STOCK MONITOR] Sending ${productsToAlert.length} low stock alerts (rate limited)`);
+        await sendStockAlertEmail(productsToAlert, 'low_stock');
+      } else {
+        console.log(`⏰ [STOCK MONITOR] Skipping low stock alerts - rate limited (last 6 hours)`);
+      }
+    }
+
+    return {
+      outOfStock: outOfStockProducts.length,
+      lowStock: lowStockProducts.length,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
+    throw error;
+  }
 };
 
 // ==================== SERVERLESS DATABASE CONNECTION ====================
@@ -992,8 +1180,273 @@ app.get('/api/health', (req, res) => {
     immediateRevenueTracking: 'enabled',
     creditDisplayLogic: 'balance_due_only',
     upfrontPaymentTracking: 'enhanced',
-    serverless: true
+    serverless: true,
+    stockMonitoring: 'on-demand'
   });
+});
+
+// ==================== STOCK MONITORING ENDPOINTS ====================
+
+// Manual stock check endpoint - TRIGGERED ON DEMAND
+app.post('/api/stock/check-now', async (req, res) => {
+  try {
+    console.log('🔍 Manual stock check triggered');
+    const result = await checkStockLevels();
+   
+    res.json({
+      success: true,
+      data: result,
+      message: `Stock check completed: ${result.outOfStock} out of stock, ${result.lowStock} low stock`
+    });
+  } catch (error) {
+    console.error('❌ Error in manual stock check:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check stock levels',
+      error: error.message
+    });
+  }
+});
+
+// Manual stock check with detailed logging
+app.post('/api/stock/check-now-detailed', async (req, res) => {
+  try {
+    console.log('🔍 MANUAL STOCK CHECK WITH DETAILS TRIGGERED');
+   
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    console.log(`📊 Found ${products.length} active products`);
+   
+    const outOfStockProducts = [];
+    const lowStockProducts = [];
+
+    products.forEach(product => {
+      const currentStock = product.currentStock || 0;
+      const minStockLevel = product.minStockLevel || 5;
+     
+      if (currentStock === 0) {
+        outOfStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      } else if (currentStock <= minStockLevel) {
+        lowStockProducts.push({
+          ...product,
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        });
+      }
+    });
+
+    console.log(`🚨 Stock Check Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
+   
+    // Send alerts
+    let alertResults = {};
+    if (outOfStockProducts.length > 0) {
+      console.log(`📧 Sending ${outOfStockProducts.length} out of stock alerts`);
+      alertResults.outOfStock = await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
+    }
+   
+    if (lowStockProducts.length > 0) {
+      console.log(`📧 Sending ${lowStockProducts.length} low stock alerts`);
+      alertResults.lowStock = await sendStockAlertEmail(lowStockProducts, 'low_stock');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        outOfStock: outOfStockProducts.length,
+        lowStock: lowStockProducts.length,
+        totalProducts: products.length,
+        outOfStockProducts: outOfStockProducts.map(p => p.name),
+        lowStockProducts: lowStockProducts.map(p => p.name),
+        alertsSent: alertResults,
+        timestamp: new Date().toISOString()
+      },
+      message: `Manual stock check completed: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`
+    });
+  } catch (error) {
+    console.error('❌ Error in manual stock check:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check stock levels',
+      error: error.message
+    });
+  }
+});
+
+// Get current stock alerts
+app.get('/api/stock/alerts', async (req, res) => {
+  try {
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    const outOfStockProducts = products.filter(p => (p.currentStock || 0) === 0);
+    const lowStockProducts = products.filter(p => {
+      const stock = p.currentStock || 0;
+      const minStock = p.minStockLevel || 5;
+      return stock > 0 && stock <= minStock;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        outOfStock: outOfStockProducts.map(p => ({
+          ...p,
+          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
+          status: 'out_of_stock'
+        })),
+        lowStock: lowStockProducts.map(p => ({
+          ...p,
+          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
+          status: 'low_stock'
+        })),
+        summary: {
+          totalProducts: products.length,
+          outOfStock: outOfStockProducts.length,
+          lowStock: lowStockProducts.length,
+          inStock: products.length - outOfStockProducts.length - lowStockProducts.length
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error getting stock alerts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get stock alerts',
+      error: error.message
+    });
+  }
+});
+
+// Debug endpoint to check product stock
+app.get('/api/debug/products-stock', async (req, res) => {
+  try {
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    const stockAnalysis = products.map(p => ({
+      name: p.name,
+      currentStock: p.currentStock,
+      minStockLevel: p.minStockLevel,
+      shopName: p.shop?.name || p.shopName,
+      isLowStock: (p.currentStock || 0) <= (p.minStockLevel || 5),
+      isOutOfStock: (p.currentStock || 0) === 0,
+      lastStockAlertSent: p.lastStockAlertSent
+    }));
+
+    res.json({
+      success: true,
+      data: stockAnalysis,
+      totalProducts: products.length,
+      lowStockCount: stockAnalysis.filter(p => p.isLowStock && !p.isOutOfStock).length,
+      outOfStockCount: stockAnalysis.filter(p => p.isOutOfStock).length
+    });
+  } catch (error) {
+    console.error('Error analyzing product stock:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to analyze product stock',
+      error: error.message
+    });
+  }
+});
+
+// Test stock alert email
+app.post('/api/stock/test-email', async (req, res) => {
+  try {
+    const { alertType = 'low_stock' } = req.body;
+   
+    console.log('📧 TEST: Starting stock alert email test...');
+   
+    const sampleProduct = await models.Product.findOne({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    if (!sampleProduct) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active products found for testing'
+      });
+    }
+
+    const testProduct = {
+      ...sampleProduct,
+      shopName: sampleProduct.shop?.name || sampleProduct.shopName || 'Test Shop'
+    };
+
+    console.log('📧 TEST: Sending stock alert email for:', {
+      product: testProduct.name,
+      stock: testProduct.currentStock,
+      minLevel: testProduct.minStockLevel,
+      alertType: alertType
+    });
+   
+    const emailSent = await sendStockAlertEmail([testProduct], alertType);
+   
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: `Test ${alertType} alert sent successfully for ${testProduct.name}`,
+        product: {
+          name: testProduct.name,
+          currentStock: testProduct.currentStock,
+          minStockLevel: testProduct.minStockLevel
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send test email - check server logs'
+      });
+    }
+  } catch (error) {
+    console.error('❌ TEST: Error sending test email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Test failed',
+      error: error.message
+    });
+  }
+});
+
+// Check email configuration status
+app.get('/api/debug/email-status', async (req, res) => {
+  try {
+    const emailStatus = {
+      isConfigured: !!emailTransporter,
+      adminEmail: process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com',
+      emailUser: process.env.EMAIL_USER,
+      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
+      appName: process.env.APP_NAME || 'Shop Management',
+      transporterVerified: false
+    };
+   
+    if (emailTransporter) {
+      try {
+        await emailTransporter.verify();
+        emailStatus.transporterVerified = true;
+        emailStatus.verifiedAt = new Date().toISOString();
+      } catch (verifyError) {
+        emailStatus.verifyError = verifyError.message;
+      }
+    }
+   
+    res.json({
+      success: true,
+      data: emailStatus
+    });
+  } catch (error) {
+    console.error('Error checking email status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email status',
+      error: error.message
+    });
+  }
 });
 
 // ==================== AUTHENTICATION ROUTES ====================
@@ -1410,6 +1863,69 @@ app.post('/api/auth/cashier/login', async (req, res) => {
   }
 });
 
+// ==================== PRODUCT ROUTES WITH STOCK MONITORING ====================
+
+// Update product stock and trigger alerts if needed
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const oldProduct = await models.Product.findById(id);
+    const product = await models.Product.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('shop', 'name location type');
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Check if stock was updated to critical levels
+    const oldStock = oldProduct?.currentStock || 0;
+    const newStock = product.currentStock || 0;
+    const minStock = product.minStockLevel || 5;
+   
+    // Send alert if stock became critical
+    if (newStock === 0 || (oldStock > minStock && newStock <= minStock)) {
+      const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
+      
+      // Check rate limiting (6 hours)
+      const now = new Date();
+      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      const lastAlert = product.lastStockAlertSent;
+      
+      if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
+        await sendStockAlertEmail([{
+          ...product.toObject(),
+          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+        }], alertType);
+        
+        // Update last alert timestamp
+        product.lastStockAlertSent = now;
+        await product.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      data: product,
+      message: 'Product updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update product',
+      error: error.message
+    });
+  }
+});
+
 // ==================== TRANSACTION ROUTES ====================
 
 app.get('/api/transactions/combined', async (req, res) => {
@@ -1615,119 +2131,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch transaction metrics',
-      error: error.message
-    });
-  }
-});
-
-// ==================== PRODUCT ROUTES ====================
-
-app.get('/api/products', async (req, res) => {
-  try {
-    const products = await models.Product.find()
-      .populate('shop', 'name location type')
-      .sort({ createdAt: -1 });
-   
-    res.json({
-      success: true,
-      data: products,
-      count: products.length
-    });
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch products',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/products', async (req, res) => {
-  try {
-    const productData = req.body;
-   
-    if (productData.shop) {
-      const shop = await models.Shop.findById(productData.shop);
-      if (shop) {
-        productData.shopName = shop.name;
-        productData.shopId = shop._id;
-      }
-    }
-
-    const product = new models.Product(productData);
-    await product.save();
-    await product.populate('shop', 'name location type');
-   
-    res.status(201).json({
-      success: true,
-      data: product,
-      message: 'Product created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create product',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/products/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const product = await models.Product.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shop', 'name location type');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: product,
-      message: 'Product updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update product',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/products/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const product = await models.Product.findByIdAndDelete(id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete product',
       error: error.message
     });
   }
@@ -2450,6 +2853,7 @@ app.post('/api/transactions', async (req, res) => {
       totalAmount += itemTotalPrice;
       totalCost += itemCost;
 
+      // REDUCE STOCK AND CHECK FOR ALERTS
       if (item.productId && !transactionData.isCreditPayment) {
         try {
           const product = await models.Product.findById(item.productId);
@@ -2461,6 +2865,31 @@ app.post('/api/transactions', async (req, res) => {
               currentStock: newStock,
               updatedAt: new Date()
             });
+
+            console.log(`📦 Stock reduced for ${product.name}: ${currentStock} -> ${newStock} (sold: ${quantity})`);
+
+            // Check if stock is now low or out of stock (with rate limiting)
+            const minStockLevel = CalculationUtils.safeNumber(product.minStockLevel || 5);
+            if (newStock === 0 || (newStock <= minStockLevel && newStock > 0)) {
+              const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
+              
+              // Rate limiting: Check if alert should be sent (6 hours cooldown)
+              const now = new Date();
+              const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+              const lastAlert = product.lastStockAlertSent;
+              
+              if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
+                await sendStockAlertEmail([{
+                  ...product.toObject(),
+                  shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+                }], alertType);
+                
+                // Update last alert timestamp
+                await models.Product.findByIdAndUpdate(item.productId, {
+                  lastStockAlertSent: now
+                });
+              }
+            }
           }
         } catch (stockError) {
           console.error('❌ Error reducing stock for product:', item.productId, stockError);
@@ -2895,14 +3324,16 @@ app.get('/', (req, res) => {
     endpoints: {
       metrics: '/api/transactions/metrics',
       combined: '/api/transactions/combined',
-      withCredits: '/api/transactions/with-credits'
+      stockCheck: '/api/stock/check-now',
+      stockAlerts: '/api/stock/alerts'
     },
     serverless: true,
     cogsCalculation: 'complete_sales_plus_credit_sales_made_exclude_payments',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
     creditDisplayLogic: 'balance_due_only',
-    upfrontPaymentTracking: 'enhanced'
+    upfrontPaymentTracking: 'enhanced',
+    stockMonitoring: 'on-demand (trigger via /api/stock/check-now)'
   });
 });
 
@@ -2949,6 +3380,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     console.log('='.repeat(60));
     console.log(`📍 URL: http://localhost:${PORT}`);
     console.log(`📊 Database: ${mongoose.connection.name}`);
+    console.log(`🔔 Stock Monitoring: ON-DEMAND (use /api/stock/check-now)`);
     console.log('='.repeat(60));
   });
 }
