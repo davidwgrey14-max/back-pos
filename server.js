@@ -23,6 +23,7 @@ const PORT = process.env.PORT || 5001;
 let cachedDb = null;
 let models = {};
 let emailTransporter = null;
+let modelsInitialized = false;
 
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
 app.use(responseTime());
@@ -53,7 +54,7 @@ const createModels = () => {
     shopName: String,
     description: String,
     isActive: { type: Boolean, default: true },
-    lastStockAlertSent: { type: Date, default: null }, // Track last alert for rate limiting
+    lastStockAlertSent: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -222,7 +223,7 @@ const createModels = () => {
 
   secureCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-  const models = {
+  const newModels = {
     Product: mongoose.models.Product || mongoose.model('Product', productSchema),
     Shop: mongoose.models.Shop || mongoose.model('Shop', shopSchema),
     Cashier: mongoose.models.Cashier || mongoose.model('Cashier', cashierSchema),
@@ -234,8 +235,210 @@ const createModels = () => {
   };
 
   console.log('✅ All enhanced models created successfully');
-  return models;
+  console.log('📦 Models available:', Object.keys(newModels).join(', '));
+  
+  modelsInitialized = true;
+  return newModels;
 };
+
+// Initialize models immediately (before connection)
+// This ensures models are available even if connection is delayed
+const initializeModelsImmediately = () => {
+  console.log('🔧 Initializing models immediately...');
+  const schemas = {
+    Product: new mongoose.Schema({
+      name: { type: String, required: true },
+      category: { type: String, default: 'Uncategorized' },
+      buyingPrice: { type: Number, default: 0 },
+      minSellingPrice: { type: Number, default: 0 },
+      currentStock: { type: Number, default: 0 },
+      minStockLevel: { type: Number, default: 5 },
+      barcode: String,
+      shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopId: String,
+      shopName: String,
+      description: String,
+      isActive: { type: Boolean, default: true },
+      lastStockAlertSent: { type: Date, default: null },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Shop: new mongoose.Schema({
+      name: { type: String, required: true },
+      location: String,
+      manager: String,
+      contact: String,
+      email: String,
+      type: { type: String, default: 'retail' },
+      status: { type: String, default: 'active' },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Cashier: new mongoose.Schema({
+      name: { type: String, required: true },
+      email: { type: String, required: true, unique: true },
+      phone: String,
+      password: String,
+      role: { type: String, default: 'cashier' },
+      status: { type: String, default: 'active' },
+      shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopName: String,
+      lastLogin: Date,
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Expense: new mongoose.Schema({
+      description: { type: String, required: true },
+      amount: { type: Number, required: true },
+      category: { type: String, default: 'General' },
+      date: { type: Date, default: Date.now },
+      shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopId: String,
+      shopName: String,
+      recordedBy: String,
+      paymentMethod: { type: String, default: 'cash' },
+      referenceNumber: String,
+      notes: String,
+      status: { type: String, default: 'completed' },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Transaction: new mongoose.Schema({
+      transactionNumber: { type: String, required: true, unique: true },
+      totalAmount: { type: Number, required: true },
+      cost: { type: Number, default: 0 },
+      profit: { type: Number, default: 0 },
+      profitMargin: { type: Number, default: 0 },
+      items: [{
+        productName: String,
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        quantity: { type: Number, default: 1 },
+        price: Number,
+        totalPrice: Number,
+        buyingPrice: Number,
+        cost: Number,
+        profit: Number,
+        profitMargin: Number
+      }],
+      itemsCount: { type: Number, default: 0 },
+      paymentMethod: { type: String, default: 'cash' },
+      customerName: { type: String, default: 'Walk-in Customer' },
+      customerPhone: String,
+      cashierName: String,
+      cashierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Cashier' },
+      shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopId: String,
+      shopName: String,
+      saleDate: { type: Date, default: Date.now },
+      status: { type: String, default: 'completed' },
+      isCreditTransaction: { type: Boolean, default: false },
+      creditStatus: { type: String, enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
+      recognizedRevenue: { type: Number, default: 0 },
+      outstandingRevenue: { type: Number, default: 0 },
+      amountPaid: { type: Number, default: 0 },
+      dueDate: Date,
+      creditShopName: String,
+      creditShopId: String,
+      shopClassification: String,
+      paymentSplit: {
+        cash: { type: Number, default: 0 },
+        bank_mpesa: { type: Number, default: 0 },
+        credit: { type: Number, default: 0 }
+      },
+      immediateRevenue: { type: Number, default: 0 },
+      upfrontPaymentAmount: { type: Number, default: 0 },
+      upfrontPaymentMethod: String,
+      upfrontPaymentSplit: {
+        cash: { type: Number, default: 0 },
+        bank_mpesa: { type: Number, default: 0 }
+      },
+      isCreditPayment: { type: Boolean, default: false },
+      originalCreditId: { type: mongoose.Schema.Types.ObjectId, ref: 'Credit' },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    Credit: new mongoose.Schema({
+      transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
+      customerName: { type: String, required: true },
+      customerPhone: String,
+      customerEmail: String,
+      totalAmount: { type: Number, required: true },
+      amountPaid: { type: Number, default: 0 },
+      balanceDue: { type: Number, required: true },
+      dueDate: { type: Date, required: true },
+      status: { type: String, default: 'pending', enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
+      paymentHistory: [{
+        amount: Number,
+        paymentDate: { type: Date, default: Date.now },
+        paymentMethod: String,
+        recordedBy: String,
+        cashierName: String,
+        notes: String
+      }],
+      shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopId: String,
+      shopName: String,
+      creditShopName: String,
+      creditShopId: String,
+      shopClassification: String,
+      cashierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Cashier' },
+      cashierName: String,
+      recordedBy: String,
+      notes: String,
+      upfrontPaymentAmount: { type: Number, default: 0 },
+      upfrontPaymentMethod: String,
+      upfrontPaymentSplit: {
+        cash: { type: Number, default: 0 },
+        bank_mpesa: { type: Number, default: 0 }
+      },
+      immediateRevenue: { type: Number, default: 0 },
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    User: new mongoose.Schema({
+      email: { type: String, required: true, unique: true },
+      name: { type: String, required: true },
+      role: { type: String, default: 'admin' },
+      isActive: { type: Boolean, default: true },
+      lastLogin: Date,
+      createdAt: { type: Date, default: Date.now },
+      updatedAt: { type: Date, default: Date.now }
+    }),
+    SecureCode: new mongoose.Schema({
+      email: { type: String, required: true },
+      code: { type: String, required: true },
+      expiresAt: { type: Date, required: true },
+      attempts: { type: Number, default: 0 },
+      used: { type: Boolean, default: false }
+    })
+  };
+
+  // Register models immediately
+  for (const [name, schema] of Object.entries(schemas)) {
+    if (!mongoose.models[name]) {
+      mongoose.model(name, schema);
+      console.log(`✅ Registered model: ${name}`);
+    }
+  }
+
+  // Create models object
+  models = {
+    Product: mongoose.model('Product'),
+    Shop: mongoose.model('Shop'),
+    Cashier: mongoose.model('Cashier'),
+    Expense: mongoose.model('Expense'),
+    Transaction: mongoose.model('Transaction'),
+    Credit: mongoose.model('Credit'),
+    User: mongoose.model('User'),
+    SecureCode: mongoose.model('SecureCode')
+  };
+
+  modelsInitialized = true;
+  console.log('✅ Models initialized immediately:', Object.keys(models).join(', '));
+};
+
+// Initialize models immediately
+initializeModelsImmediately();
 
 // ==================== STOCK MONITORING SYSTEM (SERVERLESS COMPATIBLE) ====================
 
@@ -445,7 +648,7 @@ const connectDB = async () => {
       minPoolSize: 1,
       retryWrites: true,
       retryReads: true,
-      bufferCommands: true, // Important for serverless
+      bufferCommands: true,
       connectTimeoutMS: 30000,
       heartbeatFrequencyMS: 10000,
       maxIdleTimeMS: 30000
@@ -467,9 +670,7 @@ const connectDB = async () => {
     const conn = await mongoose.connect(connectionString, connectionOptions);
     cachedDb = conn;
     
-    // Initialize models
-    models = createModels();
-    
+    // Models are already initialized, but we can update them if needed
     console.log('🎉 Database initialization completed successfully');
     return conn;
     
@@ -1033,6 +1234,12 @@ const getAllTransactionData = async (filters = {}) => {
       status
     } = filters;
 
+    // Ensure models exist
+    if (!models.Transaction) {
+      console.log('⚠️ Models not ready, initializing...');
+      models = createModels();
+    }
+
     let filter = {
       status: { $in: ['completed', 'credit'] }
     };
@@ -1181,7 +1388,9 @@ app.get('/api/health', (req, res) => {
     creditDisplayLogic: 'balance_due_only',
     upfrontPaymentTracking: 'enhanced',
     serverless: true,
-    stockMonitoring: 'on-demand'
+    stockMonitoring: 'on-demand',
+    modelsInitialized: modelsInitialized,
+    modelsAvailable: Object.keys(models).join(', ')
   });
 });
 
@@ -1863,9 +2072,72 @@ app.post('/api/auth/cashier/login', async (req, res) => {
   }
 });
 
-// ==================== PRODUCT ROUTES WITH STOCK MONITORING ====================
+// ==================== PRODUCT ROUTES ====================
 
-// Update product stock and trigger alerts if needed
+app.get('/api/products', async (req, res) => {
+  try {
+    console.log('📦 Fetching products...');
+    console.log('📦 Models available:', Object.keys(models));
+    
+    // Ensure models exist
+    if (!models.Product) {
+      console.log('⚠️ Product model not found, initializing...');
+      models = createModels();
+    }
+    
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location type')
+      .sort({ createdAt: -1 });
+   
+    console.log(`✅ Found ${products.length} products`);
+    
+    res.json({
+      success: true,
+      data: products,
+      count: products.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch products',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+app.post('/api/products', async (req, res) => {
+  try {
+    const productData = req.body;
+   
+    if (productData.shop) {
+      const shop = await models.Shop.findById(productData.shop);
+      if (shop) {
+        productData.shopName = shop.name;
+        productData.shopId = shop._id;
+      }
+    }
+
+    const product = new models.Product(productData);
+    await product.save();
+    await product.populate('shop', 'name location type');
+   
+    res.status(201).json({
+      success: true,
+      data: product,
+      message: 'Product created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create product',
+      error: error.message
+    });
+  }
+});
+
 app.put('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1921,6 +2193,143 @@ app.put('/api/products/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update product',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await models.Product.findByIdAndDelete(id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete product',
+      error: error.message
+    });
+  }
+});
+
+// ==================== SHOP ROUTES ====================
+
+app.get('/api/shops', async (req, res) => {
+  try {
+    console.log('🏪 Fetching shops...');
+    
+    // Ensure models exist
+    if (!models.Shop) {
+      console.log('⚠️ Shop model not found, initializing...');
+      models = createModels();
+    }
+    
+    const shops = await models.Shop.find().sort({ createdAt: -1 });
+    console.log(`✅ Found ${shops.length} shops`);
+    
+    res.json({
+      success: true,
+      data: shops,
+      count: shops.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching shops:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch shops',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+app.post('/api/shops', async (req, res) => {
+  try {
+    const shopData = req.body;
+    const shop = new models.Shop(shopData);
+    await shop.save();
+   
+    res.status(201).json({
+      success: true,
+      data: shop,
+      message: 'Shop created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create shop',
+      error: error.message
+    });
+  }
+});
+
+app.put('/api/shops/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const shop = await models.Shop.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: shop,
+      message: 'Shop updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update shop',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/shops/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shop = await models.Shop.findByIdAndDelete(id);
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Shop deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete shop',
       error: error.message
     });
   }
@@ -2131,106 +2540,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch transaction metrics',
-      error: error.message
-    });
-  }
-});
-
-// ==================== SHOP ROUTES ====================
-
-app.get('/api/shops', async (req, res) => {
-  try {
-    const shops = await models.Shop.find().sort({ createdAt: -1 });
-    res.json({
-      success: true,
-      data: shops,
-      count: shops.length
-    });
-  } catch (error) {
-    console.error('Error fetching shops:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch shops',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/shops', async (req, res) => {
-  try {
-    const shopData = req.body;
-    const shop = new models.Shop(shopData);
-    await shop.save();
-   
-    res.status(201).json({
-      success: true,
-      data: shop,
-      message: 'Shop created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create shop',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/shops/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const shop = await models.Shop.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    );
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: shop,
-      message: 'Shop updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update shop',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/shops/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shop = await models.Shop.findByIdAndDelete(id);
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Shop deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete shop',
       error: error.message
     });
   }
