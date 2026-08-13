@@ -12,7 +12,6 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      'https://back-pos.vercel.app',
       'http://localhost:3000',
       'https://pos-frontend-psi-teal.vercel.app',
       'http://127.0.0.1:3000',
