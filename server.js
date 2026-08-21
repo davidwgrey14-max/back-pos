@@ -1,4 +1,4 @@
-// server.js - Complete with Device Verification, Session Management & Secure Code Auth
+// server.js - Complete POS System Backend
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -35,7 +35,6 @@ app.use('/api/transactions/combined', (req, res, next) => {
 });
 
 // ==================== ENHANCED MODELS ====================
-
 const createModels = () => {
   console.log('🔧 Creating enhanced models...');
 
@@ -219,7 +218,6 @@ const createModels = () => {
     attempts: { type: Number, default: 0 },
     used: { type: Boolean, default: false }
   });
-
   secureCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
   const newModels = {
@@ -240,7 +238,7 @@ const createModels = () => {
   return newModels;
 };
 
-// Initialize models immediately (before connection)
+// Initialize models immediately
 const initializeModelsImmediately = () => {
   console.log('🔧 Initializing models immediately...');
   const schemas = {
@@ -411,7 +409,6 @@ const initializeModelsImmediately = () => {
     })
   };
 
-  // Register models immediately
   for (const [name, schema] of Object.entries(schemas)) {
     if (!mongoose.models[name]) {
       mongoose.model(name, schema);
@@ -419,7 +416,6 @@ const initializeModelsImmediately = () => {
     }
   }
 
-  // Create models object
   models = {
     Product: mongoose.model('Product'),
     Shop: mongoose.model('Shop'),
@@ -439,8 +435,6 @@ const initializeModelsImmediately = () => {
 initializeModelsImmediately();
 
 // ==================== DEVICE AND SESSION SCHEMAS ====================
-
-// Device Schema - Track all devices that have logged in
 const deviceSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   deviceId: { type: String, required: true, unique: true },
@@ -463,7 +457,6 @@ const deviceSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Session Schema - Track active sessions with inactivity
 const sessionSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
@@ -477,7 +470,6 @@ const sessionSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Verification Request Schema - For new device approvals
 const verificationRequestSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', required: true },
@@ -492,7 +484,6 @@ const verificationRequestSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Login History Schema - Track all login attempts
 const loginHistorySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   email: { type: String },
@@ -509,26 +500,20 @@ const loginHistorySchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 
-// Register the new models
 const Device = mongoose.models.Device || mongoose.model('Device', deviceSchema);
 const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
 const VerificationRequest = mongoose.models.VerificationRequest || mongoose.model('VerificationRequest', verificationRequestSchema);
 const LoginHistory = mongoose.models.LoginHistory || mongoose.model('LoginHistory', loginHistorySchema);
 
-// Add to models object for easy access
 models.Device = Device;
 models.Session = Session;
 models.VerificationRequest = VerificationRequest;
 models.LoginHistory = LoginHistory;
 
 // ==================== STOCK MONITORING SYSTEM ====================
-
-// Send stock alert email - FIXED with better error handling
 const sendStockAlertEmail = async (products, alertType) => {
   try {
-    // Ensure email transporter is initialized
     if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
       await initializeEmail();
       if (!emailTransporter) {
         console.log('⚠️ Email service not configured - skipping stock alert');
@@ -537,7 +522,6 @@ const sendStockAlertEmail = async (products, alertType) => {
     }
 
     const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-
     const subject = alertType === 'out_of_stock'
       ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
       : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
@@ -555,73 +539,41 @@ const sendStockAlertEmail = async (products, alertType) => {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0;">
-            ${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}
-          </h1>
-          <p style="margin: 10px 0 0 0; font-size: 16px;">
-            ${process.env.APP_NAME || 'Shop Management System'} - Automated Alert
-          </p>
+          <h1 style="margin: 0;">${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}</h1>
         </div>
         <div style="padding: 20px; background: #f9f9f9;">
           <p>Dear Administrator,</p>
-          <p>
-            ${alertType === 'out_of_stock'
-              ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
-              : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>. Please consider restocking soon.`
-            }
+          <p>${alertType === 'out_of_stock'
+            ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>.`
+            : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>.`}
           </p>
           <div style="margin: 20px 0;">
             <table style="width: 100%; border-collapse: collapse; background: white;">
               <thead>
                 <tr style="background: #333; color: white;">
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Product Name</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Category</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Current Stock</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min Level</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Shop</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">Product</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">Category</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Stock</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">Shop</th>
                 </tr>
               </thead>
-              <tbody>
-                ${productList}
-              </tbody>
+              <tbody>${productList}</tbody>
             </table>
           </div>
-          <p>
-            <strong>Action Required:</strong> Please log in to the system and update the stock levels for these products.
-          </p>
-          <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
-            <p style="margin: 0;">
-              <strong>Note:</strong> This is an automated alert.
-              ${alertType === 'out_of_stock'
-                ? 'Reminders will be sent every 6 hours until stock is updated.'
-                : 'You will receive notifications for critical stock levels.'
-              }
-            </p>
-          </div>
-          <p>
-            Best regards,<br>
-            <strong>${process.env.APP_NAME || 'Shop Management'} System</strong>
-          </p>
-        </div>
-        <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">
-            This email was automatically generated by the Inventory Management System.<br>
-            Please do not reply to this message.
-          </p>
+          <p><strong>Action Required:</strong> Please log in and update stock levels.</p>
         </div>
       </div>
     `;
 
-    const mailOptions = {
-      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
+    await emailTransporter.sendMail({
+      from: `"Inventory Alert" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
       to: adminEmail,
       subject: subject,
       html: html,
       priority: 'high'
-    };
-
-    await emailTransporter.sendMail(mailOptions);
-    console.log(`✅ ${alertType === 'out_of_stock' ? 'Out of stock' : 'Low stock'} alert sent for ${products.length} products`);
+    });
+    console.log(`✅ ${alertType} alert sent for ${products.length} products`);
     return true;
   } catch (error) {
     console.error('❌ Error sending stock alert email:', error);
@@ -629,16 +581,16 @@ const sendStockAlertEmail = async (products, alertType) => {
   }
 };
 
-// Check stock levels and send alerts
 const checkStockLevels = async () => {
   try {
     console.log('🔍 [STOCK MONITOR] Checking stock levels...');
+    if (!models.Product) {
+      models = createModels();
+    }
 
     const products = await models.Product.find({ isActive: true })
       .populate('shop', 'name location')
       .lean();
-
-    console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
 
     const outOfStockProducts = [];
     const lowStockProducts = [];
@@ -648,32 +600,21 @@ const checkStockLevels = async () => {
       const minStockLevel = product.minStockLevel || 5;
 
       if (currentStock === 0) {
-        outOfStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
+        outOfStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
       } else if (currentStock <= minStockLevel) {
-        lowStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
+        lowStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
       }
     });
 
-    console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
-
-    // Send out of stock notifications
     if (outOfStockProducts.length > 0) {
-      console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
       await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
     }
 
-    // Send low stock notifications with rate limiting (6 hours)
     if (lowStockProducts.length > 0) {
       const now = new Date();
       const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-
       const productsToAlert = [];
+
       for (const product of lowStockProducts) {
         const dbProduct = await models.Product.findById(product._id);
         if (!dbProduct) continue;
@@ -687,10 +628,7 @@ const checkStockLevels = async () => {
       }
 
       if (productsToAlert.length > 0) {
-        console.log(`📧 [STOCK MONITOR] Sending ${productsToAlert.length} low stock alerts (rate limited)`);
         await sendStockAlertEmail(productsToAlert, 'low_stock');
-      } else {
-        console.log(`⏰ [STOCK MONITOR] Skipping low stock alerts - rate limited (last 6 hours)`);
       }
     }
 
@@ -700,23 +638,182 @@ const checkStockLevels = async () => {
       timestamp: new Date().toISOString()
     };
   } catch (error) {
-    console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
+    console.error('❌ [STOCK MONITOR] Error:', error);
     throw error;
   }
 };
 
-// ==================== SERVERLESS DATABASE CONNECTION ====================
+// ==================== EMAIL FUNCTIONS ====================
+const createEmailTransporter = () => {
+  try {
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASSWORD;
 
+    if (!emailUser || !emailPass) {
+      console.error('❌ Email credentials not configured');
+      return null;
+    }
+
+    return nodemailer.createTransport({
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+      tls: { rejectUnauthorized: false },
+      debug: process.env.NODE_ENV === 'development',
+      logger: process.env.NODE_ENV === 'development'
+    });
+  } catch (error) {
+    console.error('❌ Error creating email transporter:', error.message);
+    return null;
+  }
+};
+
+const initializeEmail = async () => {
+  try {
+    console.log('📧 Initializing email transporter...');
+    emailTransporter = createEmailTransporter();
+    
+    if (emailTransporter) {
+      await emailTransporter.verify();
+      console.log('✅ Email transporter is ready');
+      emailInitialized = true;
+      return true;
+    }
+    emailInitialized = false;
+    return false;
+  } catch (error) {
+    console.error('❌ Email configuration error:', error.message);
+    emailInitialized = false;
+    return false;
+  }
+};
+
+const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
+  try {
+    if (!emailTransporter) {
+      const initialized = await initializeEmail();
+      if (!initialized || !emailTransporter) {
+        console.error('❌ Email transporter could not be initialized');
+        return false;
+      }
+    }
+
+    let adminEmails = [];
+    try {
+      const admins = await models.User.find({ role: 'admin' }).select('email name');
+      adminEmails = admins.map(a => a.email);
+    } catch (error) {
+      console.error('❌ Error finding admin users:', error);
+    }
+
+    if (adminEmails.length === 0) {
+      adminEmails.push(process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com');
+    }
+
+    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
+      adminEmails.push(user.email);
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
+    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
+    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white;">
+          <h1 style="margin: 0;">🔐 New Device Verification Request</h1>
+        </div>
+        <div style="background: white; padding: 20px;">
+          <h2 style="color: #333;">Device Login Request</h2>
+          <p>A user is trying to log in from a new device.</p>
+          <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>👤 User:</strong> ${user.name || 'Unknown User'} (${user.email})</p>
+            <p><strong>💻 Device:</strong> ${device.deviceName || 'Unknown Device'}</p>
+            <p><strong>🖥️ OS:</strong> ${device.os || 'Unknown'} ${device.osVersion || ''}</p>
+            <p><strong>🌐 Browser:</strong> ${device.browser || 'Unknown'} ${device.browserVersion || ''}</p>
+            <p><strong>📱 MAC:</strong> ${device.macAddress || 'Unknown'}</p>
+          </div>
+          <div style="margin: 20px 0; text-align: center;">
+            <p style="font-weight: bold;">Click below to approve or reject:</p>
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+              <a href="${approveLink}" style="background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">✅ Approve Device</a>
+              <a href="${rejectLink}" style="background: #EF4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">❌ Reject Device</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    let sentCount = 0;
+    for (const adminEmail of adminEmails) {
+      try {
+        await emailTransporter.sendMail({
+          from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
+          to: adminEmail,
+          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
+          html: html,
+          priority: 'high'
+        });
+        sentCount++;
+      } catch (error) {
+        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
+      }
+    }
+
+    return sentCount > 0;
+  } catch (error) {
+    console.error('❌ Error in sendDeviceVerificationEmail:', error);
+    return false;
+  }
+};
+
+const sendDeviceApprovedEmail = async (user, device) => {
+  try {
+    if (!emailTransporter) return false;
+    await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: '✅ Device Approved',
+      html: `<h2>Device Approved</h2><p>Your device <strong>${device.deviceName || 'Unknown'}</strong> has been approved.</p><p>You can now login.</p>`
+    });
+    return true;
+  } catch (error) {
+    console.error('Error sending approval email:', error);
+    return false;
+  }
+};
+
+const sendDeviceRejectedEmail = async (user, device, reason) => {
+  try {
+    if (!emailTransporter) return false;
+    await emailTransporter.sendMail({
+      from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: '❌ Device Request Rejected',
+      html: `<h2>Device Request Rejected</h2><p>Your device <strong>${device.deviceName || 'Unknown'}</strong> has been rejected.</p><p>Reason: ${reason || 'No reason provided'}</p>`
+    });
+    return true;
+  } catch (error) {
+    console.error('Error sending rejection email:', error);
+    return false;
+  }
+};
+
+// ==================== DATABASE CONNECTION ====================
 const connectDB = async () => {
   try {
     if (cachedDb && mongoose.connection.readyState === 1) {
-      console.log('✅ Using cached database connection');
       return cachedDb;
     }
 
     const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/Eliud_db';
 
-    console.log('🔗 Connecting to MongoDB (serverless mode)...');
+    console.log('🔗 Connecting to MongoDB...');
 
     const connectionOptions = {
       serverSelectionTimeoutMS: 30000,
@@ -731,151 +828,50 @@ const connectDB = async () => {
       maxIdleTimeMS: 30000
     };
 
-    mongoose.connection.on('connected', () => {
-      console.log('✅ MongoDB connected successfully');
-    });
-
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err.message);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.log('⚠️ MongoDB disconnected');
-    });
-
     const conn = await mongoose.connect(connectionString, connectionOptions);
     cachedDb = conn;
-
-    console.log('🎉 Database initialization completed successfully');
+    console.log('🎉 Database connection established');
     return conn;
-
   } catch (error) {
     console.error(`❌ Database connection error: ${error.message}`);
     throw error;
   }
 };
 
-// ==================== EMAIL CONFIGURATION - FIXED ====================
-const createEmailTransporter = () => {
-  try {
-    const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASSWORD;
-
-    console.log('📧 Email configuration check:');
-    console.log('📧 EMAIL_USER exists:', !!emailUser);
-    console.log('📧 EMAIL_PASSWORD exists:', !!emailPass);
-
-    if (!emailUser || !emailPass) {
-      console.error('❌ Email credentials not configured');
-      // Don't throw, just return null and let the app handle it
-      return null;
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailUser,
-        pass: emailPass,
-      },
-      tls: {
-        rejectUnauthorized: false
-      },
-      debug: process.env.NODE_ENV === 'development',
-      logger: process.env.NODE_ENV === 'development'
-    });
-
-    return transporter;
-  } catch (error) {
-    console.error('❌ Error creating email transporter:', error.message);
-    return null;
-  }
-};
-
-const initializeEmail = async () => {
-  try {
-    console.log('📧 Initializing email transporter...');
-    emailTransporter = createEmailTransporter();
-    
-    if (emailTransporter) {
-      console.log('📧 Verifying email transporter...');
-      await emailTransporter.verify();
-      console.log('✅ Email transporter is ready and verified');
-      emailInitialized = true;
-      return true;
-    }
-    emailInitialized = false;
-    return false;
-  } catch (error) {
-    console.error('❌ Email configuration error:', error.message);
-    emailInitialized = false;
-    return false;
-  }
-};
-
 // ==================== DEVICE FINGERPRINTING UTILITIES ====================
-
 const getDeviceInfo = (req) => {
   const userAgent = req.headers['user-agent'] || '';
   const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip || 'unknown';
 
-  // Parse OS
-  let os = 'Unknown';
-  let osVersion = 'Unknown';
-  let deviceType = 'unknown';
-  let deviceName = 'Unknown Device';
+  let os = 'Unknown', osVersion = 'Unknown', deviceType = 'unknown', deviceName = 'Unknown Device';
 
   if (userAgent.includes('Windows NT 10.0')) {
-    os = 'Windows 10';
-    osVersion = '10.0';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
+    os = 'Windows 10'; osVersion = '10.0'; deviceType = 'desktop'; deviceName = 'Windows PC';
   } else if (userAgent.includes('Windows NT 6.1')) {
-    os = 'Windows 7';
-    osVersion = '6.1';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
+    os = 'Windows 7'; osVersion = '6.1'; deviceType = 'desktop'; deviceName = 'Windows PC';
   } else if (userAgent.includes('Windows NT 6.2')) {
-    os = 'Windows 8';
-    osVersion = '6.2';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
+    os = 'Windows 8'; osVersion = '6.2'; deviceType = 'desktop'; deviceName = 'Windows PC';
   } else if (userAgent.includes('Windows NT 6.3')) {
-    os = 'Windows 8.1';
-    osVersion = '6.3';
-    deviceType = 'desktop';
-    deviceName = 'Windows PC';
+    os = 'Windows 8.1'; osVersion = '6.3'; deviceType = 'desktop'; deviceName = 'Windows PC';
   } else if (userAgent.includes('Mac OS X')) {
     os = 'macOS';
     const match = userAgent.match(/Mac OS X (\d+[._]\d+)/);
     if (match) osVersion = match[1].replace('_', '.');
-    deviceType = 'desktop';
-    deviceName = 'Mac';
+    deviceType = 'desktop'; deviceName = 'Mac';
   } else if (userAgent.includes('iPhone')) {
-    os = 'iOS';
-    deviceType = 'mobile';
-    deviceName = 'iPhone';
+    os = 'iOS'; deviceType = 'mobile'; deviceName = 'iPhone';
   } else if (userAgent.includes('iPad')) {
-    os = 'iOS';
-    deviceType = 'tablet';
-    deviceName = 'iPad';
+    os = 'iOS'; deviceType = 'tablet'; deviceName = 'iPad';
   } else if (userAgent.includes('Android')) {
     os = 'Android';
-    deviceType = 'mobile';
     const match = userAgent.match(/Android (\d+[._]\d+)/);
     if (match) osVersion = match[1];
-    deviceName = 'Android Device';
+    deviceType = 'mobile'; deviceName = 'Android Device';
   } else if (userAgent.includes('Linux')) {
-    os = 'Linux';
-    deviceType = 'desktop';
-    deviceName = 'Linux PC';
+    os = 'Linux'; deviceType = 'desktop'; deviceName = 'Linux PC';
   }
 
-  // Parse Browser
-  let browser = 'Unknown';
-  let browserVersion = 'Unknown';
+  let browser = 'Unknown', browserVersion = 'Unknown';
   if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
     browser = 'Chrome';
     const match = userAgent.match(/Chrome\/(\d+)/);
@@ -892,13 +888,8 @@ const getDeviceInfo = (req) => {
     browser = 'Edge';
     const match = userAgent.match(/Edg\/(\d+)/);
     if (match) browserVersion = match[1];
-  } else if (userAgent.includes('Opera') || userAgent.includes('OPR')) {
-    browser = 'Opera';
-    const match = userAgent.match(/Opera\/(\d+)/) || userAgent.match(/OPR\/(\d+)/);
-    if (match) browserVersion = match[1];
   }
 
-  // Generate MAC address from userAgent + IP
   const macFallback = crypto
     .createHash('sha256')
     .update(`${userAgent}${ip}${req.headers['accept-language'] || ''}`)
@@ -925,8 +916,7 @@ const getDeviceInfo = (req) => {
   };
 };
 
-// ==================== AUTHENTICATION MIDDLEWARE ====================
-
+// ==================== AUTH MIDDLEWARE ====================
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -936,47 +926,28 @@ const authMiddleware = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
 
-    const session = await Session.findOne({
-      token: token,
-      isActive: true,
-      userId: decoded.userId
-    });
+    const session = await Session.findOne({ token: token, isActive: true, userId: decoded.userId });
 
     if (!session) {
-      return res.status(401).json({
-        success: false,
-        message: 'Session expired or invalid. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
+      return res.status(401).json({ success: false, message: 'Session expired or invalid.', code: 'SESSION_EXPIRED' });
     }
 
     if (new Date() > session.expiresAt) {
       session.isActive = false;
       session.logoutReason = 'inactivity';
       await session.save();
-      return res.status(401).json({
-        success: false,
-        message: 'Session expired due to inactivity. Please login again.',
-        code: 'SESSION_EXPIRED'
-      });
+      return res.status(401).json({ success: false, message: 'Session expired.', code: 'SESSION_EXPIRED' });
     }
 
     session.lastActivity = new Date();
     await session.save();
 
-    await Device.findByIdAndUpdate(session.deviceId, {
-      lastActivity: new Date()
-    });
+    await Device.findByIdAndUpdate(session.deviceId, { lastActivity: new Date() });
 
     let user = await models.User.findById(decoded.userId);
-    if (!user) {
-      user = await models.Cashier.findById(decoded.userId);
-    }
+    if (!user) user = await models.Cashier.findById(decoded.userId);
 
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User not found' });
-    }
-
+    if (!user) return res.status(401).json({ success: false, message: 'User not found' });
     if (user.isActive === false || user.status === 'inactive') {
       return res.status(403).json({ success: false, message: 'Account is deactivated' });
     }
@@ -985,84 +956,60 @@ const authMiddleware = async (req, res, next) => {
     req.session = session;
     req.deviceId = session.deviceId;
     next();
-
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, message: 'Token expired' });
-    }
+    if (error.name === 'JsonWebTokenError') return res.status(401).json({ success: false, message: 'Invalid token' });
+    if (error.name === 'TokenExpiredError') return res.status(401).json({ success: false, message: 'Token expired' });
     console.error('❌ Auth middleware error:', error);
     return res.status(500).json({ success: false, message: 'Authentication error' });
   }
 };
 
-// ==================== MIDDLEWARE - Database Connection ====================
-
+// ==================== MIDDLEWARE - DB Connection ====================
 const ensureDbConnection = async (req, res, next) => {
   try {
     if (mongoose.connection.readyState !== 1) {
-      console.log('🔄 Connecting to database for request:', req.path);
       await connectDB();
-
-      if (!emailTransporter) {
-        await initializeEmail();
-      }
+      if (!emailTransporter) await initializeEmail();
     }
     next();
   } catch (error) {
-    console.error('❌ Database connection middleware error:', error);
-    res.status(503).json({
-      success: false,
-      message: 'Database temporarily unavailable',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    res.status(503).json({ success: false, message: 'Database temporarily unavailable' });
   }
 };
 
 app.use('/api', ensureDbConnection);
 
 // ==================== MIDDLEWARE SETUP ====================
-
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-
-app.use((req, res, next) => {
-  res.removeHeader('X-Powered-By');
-  next();
-});
-
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use((req, res, next) => { res.removeHeader('X-Powered-By'); next(); });
 app.use(compression());
 
+// FIXED CORS - Allow all needed origins
 app.use(cors({
-  origin: ['https://pos-frontend-psi-teal.vercel.app'],
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'https://pos-frontend-psi-teal.vercel.app'
+    ];
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development' || origin.includes('vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
 app.options('*', cors());
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { success: false, message: 'Too many requests' }
-});
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: { success: false, message: 'Too many requests' } });
 app.use('/api/', limiter);
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many authentication attempts' }
-});
-
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many email requests' }
-});
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { success: false, message: 'Too many authentication attempts' } });
+const emailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { success: false, message: 'Too many email requests' } });
 
 app.use('/api/auth/request-code', emailLimiter);
 app.use('/api/auth/verify-code', authLimiter);
@@ -1072,234 +1019,99 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
 
 // ==================== CALCULATION UTILITIES ====================
-
 const CalculationUtils = {
   safeNumber: (value, defaultValue = 0) => {
     if (value === null || value === undefined || value === '') return defaultValue;
     const num = Number(value);
     return isNaN(num) ? defaultValue : num;
   },
-
-  formatCurrency: (amount) => {
-    const value = CalculationUtils.safeNumber(amount);
-    return `KES ${value.toLocaleString('en-KE', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
-  },
-
-  calculateProfit: (revenue, cost) => {
-    return CalculationUtils.safeNumber(revenue) - CalculationUtils.safeNumber(cost);
-  },
-
+  formatCurrency: (amount) => `KES ${CalculationUtils.safeNumber(amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  calculateProfit: (revenue, cost) => CalculationUtils.safeNumber(revenue) - CalculationUtils.safeNumber(cost),
   calculateProfitMargin: (revenue, profit) => {
     const safeRevenue = CalculationUtils.safeNumber(revenue);
-    const safeProfit = CalculationUtils.safeNumber(profit);
-    return safeRevenue > 0 ? (safeProfit / safeRevenue) * 100 : 0;
+    return safeRevenue > 0 ? (CalculationUtils.safeNumber(profit) / safeRevenue) * 100 : 0;
   },
-
   calculateCOGS: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
       const totalCost = CalculationUtils.safeNumber(transaction.cost);
-
       if (transaction.isCreditTransaction) {
         const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount);
         const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid);
         const paidRatio = totalAmount > 0 ? Math.min(amountPaid / totalAmount, 1) : 0;
         return sum + totalCost * paidRatio;
       }
-
-      if (transaction.isCreditPayment) {
-        return sum;
-      }
-
+      if (transaction.isCreditPayment) return sum;
       return sum + totalCost;
     }, 0);
   },
-
   calculateRevenue: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
     return transactions.reduce((sum, transaction) => {
-      if (transaction.isCreditPayment) {
-        return sum + CalculationUtils.safeNumber(transaction.totalAmount);
-      }
-
-      if (transaction.isCreditTransaction) {
-        return sum + CalculationUtils.safeNumber(transaction.amountPaid);
-      }
-
+      if (transaction.isCreditPayment) return sum + CalculationUtils.safeNumber(transaction.totalAmount);
+      if (transaction.isCreditTransaction) return sum + CalculationUtils.safeNumber(transaction.amountPaid);
       return sum + CalculationUtils.safeNumber(transaction.totalAmount);
     }, 0);
   },
-
   calculateCostFromItems: async (transaction, products = []) => {
     try {
-      if (transaction.cost && CalculationUtils.safeNumber(transaction.cost) > 0) {
-        return CalculationUtils.safeNumber(transaction.cost);
-      }
-      if (transaction.totalCost && CalculationUtils.safeNumber(transaction.totalCost) > 0) {
-        return CalculationUtils.safeNumber(transaction.totalCost);
-      }
+      if (transaction.cost && CalculationUtils.safeNumber(transaction.cost) > 0) return CalculationUtils.safeNumber(transaction.cost);
+      if (transaction.totalCost && CalculationUtils.safeNumber(transaction.totalCost) > 0) return CalculationUtils.safeNumber(transaction.totalCost);
       if (transaction.items && Array.isArray(transaction.items)) {
         let totalCost = 0;
         for (const item of transaction.items) {
           const quantity = CalculationUtils.safeNumber(item.quantity, 1);
           let itemCost = 0;
-          if (item.cost && CalculationUtils.safeNumber(item.cost) > 0) {
-            itemCost = CalculationUtils.safeNumber(item.cost);
-          } else if (item.buyingPrice && CalculationUtils.safeNumber(item.buyingPrice) > 0) {
-            itemCost = CalculationUtils.safeNumber(item.buyingPrice);
-          } else if (item.productId && products.length > 0) {
-            const product = products.find(p =>
-              p._id && item.productId &&
-              (p._id.toString() === item.productId.toString() ||
-               (p._id && item.productId._id && p._id.toString() === item.productId._id.toString()))
-            );
-            if (product) {
-              itemCost = CalculationUtils.safeNumber(product.buyingPrice);
-            }
-          } else if (item.price && CalculationUtils.safeNumber(item.price) > 0) {
-            itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
-          }
+          if (item.cost && CalculationUtils.safeNumber(item.cost) > 0) itemCost = CalculationUtils.safeNumber(item.cost);
+          else if (item.buyingPrice && CalculationUtils.safeNumber(item.buyingPrice) > 0) itemCost = CalculationUtils.safeNumber(item.buyingPrice);
+          else if (item.productId && products.length > 0) {
+            const product = products.find(p => p._id && item.productId && p._id.toString() === item.productId.toString());
+            if (product) itemCost = CalculationUtils.safeNumber(product.buyingPrice);
+          } else if (item.price && CalculationUtils.safeNumber(item.price) > 0) itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
           totalCost += itemCost * quantity;
         }
         return totalCost;
       }
       return 0;
-    } catch (error) {
-      console.error('❌ Error calculating cost from items:', error);
-      return 0;
-    }
+    } catch (error) { console.error('Error calculating cost:', error); return 0; }
   },
-
   processSingleTransaction: async (transaction, products = []) => {
     try {
       if (!transaction) return CalculationUtils.createFallbackTransaction();
-
       if (transaction.isCreditPayment) {
-        return {
-          ...transaction,
-          totalAmount: CalculationUtils.safeNumber(transaction.totalAmount),
-          cost: 0,
-          profit: CalculationUtils.safeNumber(transaction.totalAmount),
-          profitMargin: 100,
-          isCreditTransaction: false,
-          isCreditPayment: true,
-          recognizedRevenue: CalculationUtils.safeNumber(transaction.totalAmount),
-          outstandingRevenue: 0,
-          amountPaid: CalculationUtils.safeNumber(transaction.totalAmount),
-          immediateRevenue: CalculationUtils.safeNumber(transaction.totalAmount),
-          creditStatus: null,
-          itemsCount: 0,
-          displayDate: transaction.displayDate ||
-                      new Date(transaction.saleDate || transaction.createdAt).toLocaleString('en-KE'),
-          _processedAt: new Date().toISOString(),
-          _isValid: true
-        };
+        return { ...transaction, totalAmount: CalculationUtils.safeNumber(transaction.totalAmount), cost: 0, profit: CalculationUtils.safeNumber(transaction.totalAmount), profitMargin: 100, isCreditTransaction: false, isCreditPayment: true, recognizedRevenue: CalculationUtils.safeNumber(transaction.totalAmount), outstandingRevenue: 0, amountPaid: CalculationUtils.safeNumber(transaction.totalAmount), immediateRevenue: CalculationUtils.safeNumber(transaction.totalAmount), creditStatus: null, itemsCount: 0, _isValid: true };
       }
-
-      const isCredit = transaction.paymentMethod === 'credit' ||
-                      transaction.isCredit === true ||
-                      transaction.transactionType === 'credit' ||
-                      transaction.isCreditTransaction === true ||
-                      transaction.status === 'credit';
-
-      const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) ||
-                         CalculationUtils.safeNumber(transaction.amount) || 0;
-
+      const isCredit = transaction.paymentMethod === 'credit' || transaction.isCreditTransaction === true || transaction.status === 'credit';
+      const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) || 0;
       const fullCost = await CalculationUtils.calculateCostFromItems(transaction, products);
-
-      let cumulativePaid = CalculationUtils.safeNumber(transaction.amountPaid) ||
-                          CalculationUtils.safeNumber(transaction.paidAmount) || 0;
-
+      let cumulativePaid = CalculationUtils.safeNumber(transaction.amountPaid) || 0;
       if (transaction.paymentHistory && Array.isArray(transaction.paymentHistory)) {
-        const historyTotal = transaction.paymentHistory.reduce((sum, p) =>
-          sum + CalculationUtils.safeNumber(p.amount), 0);
-        if (historyTotal > cumulativePaid) {
-          cumulativePaid = historyTotal;
-        }
+        const historyTotal = transaction.paymentHistory.reduce((sum, p) => sum + CalculationUtils.safeNumber(p.amount), 0);
+        if (historyTotal > cumulativePaid) cumulativePaid = historyTotal;
       }
-
       const recognizedRevenue = isCredit ? Math.min(cumulativePaid, totalAmount) : totalAmount;
       const outstandingRevenue = isCredit ? Math.max(0, totalAmount - cumulativePaid) : 0;
       const immediateRevenue = isCredit ? CalculationUtils.safeNumber(transaction.upfrontPaymentAmount || cumulativePaid) : totalAmount;
-
       let cost = 0;
       if (isCredit) {
         const paidRatio = totalAmount > 0 ? Math.min(recognizedRevenue / totalAmount, 1) : 0;
         cost = fullCost * paidRatio;
-      } else {
-        cost = fullCost;
-      }
-
+      } else cost = fullCost;
       const profit = CalculationUtils.calculateProfit(recognizedRevenue, cost);
       const profitMargin = CalculationUtils.calculateProfitMargin(totalAmount, profit);
-
       const saleDate = transaction.saleDate || transaction.createdAt || transaction.date;
-      const displayDate = transaction.displayDate ||
-                         (saleDate ? new Date(saleDate).toLocaleString('en-KE') : 'Date Unknown');
-
+      const displayDate = transaction.displayDate || (saleDate ? new Date(saleDate).toLocaleString('en-KE') : 'Date Unknown');
       let creditStatus = 'completed';
       if (isCredit) {
-        if (outstandingRevenue <= 0) {
-          creditStatus = 'paid';
-        } else if (cumulativePaid > 0) {
-          creditStatus = 'partially_paid';
-        } else {
-          creditStatus = 'pending';
-        }
-        if (transaction.dueDate && new Date(transaction.dueDate) < new Date() && outstandingRevenue > 0) {
-          creditStatus = 'overdue';
-        }
+        if (outstandingRevenue <= 0) creditStatus = 'paid';
+        else if (cumulativePaid > 0) creditStatus = 'partially_paid';
+        else creditStatus = 'pending';
+        if (transaction.dueDate && new Date(transaction.dueDate) < new Date() && outstandingRevenue > 0) creditStatus = 'overdue';
       }
-
-      return {
-        ...transaction,
-        totalAmount,
-        cost,
-        profit,
-        profitMargin,
-        isCreditTransaction: isCredit,
-        recognizedRevenue,
-        outstandingRevenue,
-        amountPaid: cumulativePaid,
-        immediateRevenue,
-        creditStatus,
-        itemsCount: transaction.items ? transaction.items.reduce((sum, item) =>
-          sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0,
-        displayDate,
-        _processedAt: new Date().toISOString(),
-        _isValid: true
-      };
-    } catch (error) {
-      console.error('❌ Error processing single transaction:', error);
-      return CalculationUtils.createFallbackTransaction();
-    }
+      return { ...transaction, totalAmount, cost, profit, profitMargin, isCreditTransaction: isCredit, recognizedRevenue, outstandingRevenue, amountPaid: cumulativePaid, immediateRevenue, creditStatus, itemsCount: transaction.items ? transaction.items.reduce((sum, item) => sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0, displayDate, _processedAt: new Date().toISOString(), _isValid: true };
+    } catch (error) { console.error('Error processing transaction:', error); return CalculationUtils.createFallbackTransaction(); }
   },
-
-  createFallbackTransaction: () => {
-    return {
-      totalAmount: 0,
-      cost: 0,
-      profit: 0,
-      profitMargin: 0,
-      isCreditTransaction: false,
-      recognizedRevenue: 0,
-      outstandingRevenue: 0,
-      amountPaid: 0,
-      immediateRevenue: 0,
-      creditStatus: 'completed',
-      itemsCount: 0,
-      displayDate: new Date().toLocaleString('en-KE'),
-      _isValid: false
-    };
-  },
-
-  calculateTransactionMetrics: (transaction) => {
-    return CalculationUtils.processSingleTransaction(transaction);
-  },
-
+  createFallbackTransaction: () => ({ totalAmount: 0, cost: 0, profit: 0, profitMargin: 0, isCreditTransaction: false, recognizedRevenue: 0, outstandingRevenue: 0, amountPaid: 0, immediateRevenue: 0, creditStatus: 'completed', itemsCount: 0, displayDate: new Date().toLocaleString('en-KE'), _isValid: false }),
   processComprehensiveData: async (rawData, selectedShop) => {
     const transactions = rawData.transactions || [];
     const expenses = rawData.expenses || [];
@@ -1308,16 +1120,8 @@ const CalculationUtils = {
     const shops = rawData.shops || [];
     const cashiers = rawData.cashiers || [];
 
-    const salesWithProfit = await Promise.all(
-      transactions.map(transaction =>
-        CalculationUtils.processSingleTransaction(transaction, products)
-      )
-    );
-
-    const filteredTransactions = selectedShop && selectedShop !== 'all' ?
-      salesWithProfit.filter(t =>
-        t.shop === selectedShop || t.shopId === selectedShop
-      ) : salesWithProfit;
+    const salesWithProfit = await Promise.all(transactions.map(t => CalculationUtils.processSingleTransaction(t, products)));
+    const filteredTransactions = selectedShop && selectedShop !== 'all' ? salesWithProfit.filter(t => t.shop === selectedShop || t.shopId === selectedShop) : salesWithProfit;
 
     const totalTransactions = filteredTransactions.length;
     const creditTransactions = filteredTransactions.filter(t => t.isCreditTransaction);
@@ -1333,39 +1137,22 @@ const CalculationUtils = {
     const totalExpenses = expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0);
     const netProfit = grossProfit - totalExpenses;
 
-    let totalCash = 0;
-    let totalMpesaBank = 0;
-    let totalCreditBalance = 0;
-
-    filteredTransactions.forEach(transaction => {
-      if (transaction.paymentSplit) {
-        totalCash += CalculationUtils.safeNumber(transaction.paymentSplit.cash);
-        totalMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.bank_mpesa);
-        totalCreditBalance += CalculationUtils.safeNumber(transaction.paymentSplit.credit);
-      } else {
-        if (transaction.paymentMethod === 'cash') {
-          totalCash += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
-        } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
-          totalMpesaBank += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
-        } else if (transaction.paymentMethod === 'credit') {
-          totalCreditBalance += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
-        } else if (transaction.paymentMethod === 'cash_bank_mpesa') {
-          const half = CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue) / 2;
-          totalCash += half;
-          totalMpesaBank += half;
+    let totalCash = 0, totalMpesaBank = 0;
+    filteredTransactions.forEach(t => {
+      if (t.paymentSplit) { totalCash += CalculationUtils.safeNumber(t.paymentSplit.cash); totalMpesaBank += CalculationUtils.safeNumber(t.paymentSplit.bank_mpesa); }
+      else {
+        if (t.paymentMethod === 'cash') totalCash += CalculationUtils.safeNumber(t.immediateRevenue || t.recognizedRevenue);
+        else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) totalMpesaBank += CalculationUtils.safeNumber(t.immediateRevenue || t.recognizedRevenue);
+        else if (t.paymentMethod === 'cash_bank_mpesa') {
+          const half = CalculationUtils.safeNumber(t.immediateRevenue || t.recognizedRevenue) / 2;
+          totalCash += half; totalMpesaBank += half;
         }
       }
     });
 
-    const outstandingCredit = credits
-      .filter(credit => credit.status !== 'paid' &&
-        (!selectedShop || selectedShop === 'all' ||
-         credit.shop === selectedShop || credit.shopId === selectedShop))
-      .reduce((sum, credit) => sum + CalculationUtils.safeNumber(credit.balanceDue), 0);
-
+    const outstandingCredit = credits.filter(c => c.status !== 'paid' && (!selectedShop || selectedShop === 'all' || c.shop === selectedShop || c.shopId === selectedShop)).reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0);
     const totalCreditGiven = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const recognizedCreditRevenue = creditTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
-    const immediateRevenueTotal = filteredTransactions.reduce((sum, t) => sum + (t.immediateRevenue || 0), 0);
 
     const financialStats = {
       totalSales: totalTransactions,
@@ -1381,27 +1168,17 @@ const CalculationUtils = {
       totalCash: totalCash,
       outstandingCredit: outstandingCredit,
       totalCreditGiven: totalCreditGiven,
-      immediateRevenue: immediateRevenueTotal,
+      immediateRevenue: filteredTransactions.reduce((sum, t) => sum + (t.immediateRevenue || 0), 0),
       creditSalesCount: creditTransactions.length,
       creditPaymentsCount: creditPayments.length,
       nonCreditSalesCount: nonCreditTransactions.length,
       completeTransactionsCount: nonCreditTransactions.length,
       recognizedCreditRevenue: recognizedCreditRevenue,
       profitMargin: CalculationUtils.calculateProfitMargin(totalRevenue, netProfit),
-      creditCollectionRate: totalCreditGiven > 0 ?
-        (recognizedCreditRevenue / totalCreditGiven) * 100 : 0,
+      creditCollectionRate: totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0,
       totalItemsSold: filteredTransactions.reduce((sum, t) => sum + t.itemsCount, 0),
       averageTransactionValue: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
-      cogsBreakdown: {
-        total: costOfGoodsSold,
-        fromCreditSales: CalculationUtils.calculateCOGS(creditTransactions),
-        fromCompleteSales: CalculationUtils.calculateCOGS(nonCreditTransactions),
-        fromCreditPayments: CalculationUtils.calculateCOGS(creditPayments)
-      },
       _cogsCalculation: 'prorated_based_on_payment',
-      _revenueCalculation: 'cumulative_payments_for_credit',
-      _paymentTracking: 'payment_split_enhanced_with_upfront',
-      _upfrontPaymentSupport: true,
       _calculatedAt: new Date().toISOString()
     };
 
@@ -1412,38 +1189,14 @@ const CalculationUtils = {
       salesWithProfit: filteredTransactions,
       financialStats,
       salesPerformanceSummary: financialStats,
-      expenses,
-      credits,
-      products,
-      shops,
-      cashiers,
-      performance: {
-        topProducts,
-        shopPerformance,
-        topCashiers: shopPerformance.slice(0, 10)
-      },
+      expenses, credits, products, shops, cashiers,
+      performance: { topProducts, shopPerformance, topCashiers: shopPerformance.slice(0, 10) },
       summary: financialStats,
-      enhancedStats: {
-        salesWithProfit: filteredTransactions,
-        financialStats
-      },
-      comprehensiveReport: {
-        summary: financialStats,
-        transactions: filteredTransactions,
-        expenses,
-        products,
-        credits,
-        shops,
-        cashiers,
-        performance: {
-          topProducts,
-          shopPerformance
-        }
-      },
+      enhancedStats: { salesWithProfit: filteredTransactions, financialStats },
+      comprehensiveReport: { summary: financialStats, transactions: filteredTransactions, expenses, products, credits, shops, cashiers, performance: { topProducts, shopPerformance } },
       timestamp: new Date().toISOString()
     };
   },
-
   calculateTopProducts: (transactions, limit = 10) => {
     if (!Array.isArray(transactions)) return [];
     const productMap = {};
@@ -1451,17 +1204,7 @@ const CalculationUtils = {
       transaction.items?.forEach(item => {
         const productId = item.productId?.toString() || item.productName;
         const productName = item.productName || 'Unknown Product';
-        if (!productMap[productId]) {
-          productMap[productId] = {
-            id: productId,
-            name: productName,
-            totalSold: 0,
-            totalRevenue: 0,
-            totalProfit: 0,
-            totalCost: 0,
-            transactions: 0
-          };
-        }
+        if (!productMap[productId]) productMap[productId] = { id: productId, name: productName, totalSold: 0, totalRevenue: 0, totalProfit: 0, totalCost: 0, transactions: 0 };
         const quantity = CalculationUtils.safeNumber(item.quantity, 1);
         const revenue = CalculationUtils.safeNumber(item.totalPrice);
         const cost = CalculationUtils.safeNumber(item.buyingPrice) * quantity;
@@ -1473,16 +1216,8 @@ const CalculationUtils = {
         productMap[productId].transactions += 1;
       });
     });
-    return Object.values(productMap)
-      .map(product => ({
-        ...product,
-        profitMargin: CalculationUtils.calculateProfitMargin(product.totalRevenue, product.totalProfit),
-        averagePrice: product.totalSold > 0 ? product.totalRevenue / product.totalSold : 0
-      }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, limit);
+    return Object.values(productMap).map(p => ({ ...p, profitMargin: CalculationUtils.calculateProfitMargin(p.totalRevenue, p.totalProfit), averagePrice: p.totalSold > 0 ? p.totalRevenue / p.totalSold : 0 })).sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, limit);
   },
-
   calculateShopPerformance: (transactions, shops) => {
     if (!Array.isArray(transactions)) return [];
     const shopMap = {};
@@ -1490,72 +1225,29 @@ const CalculationUtils = {
       const shopId = transaction.shop || transaction.shopId;
       if (!shopId) return;
       if (!shopMap[shopId]) {
-        const shop = shops.find(s => s._id.toString() === shopId.toString()) ||
-                    { name: 'Unknown Shop', location: 'Unknown' };
-        shopMap[shopId] = {
-          id: shopId,
-          name: shop.name,
-          location: shop.location,
-          revenue: 0,
-          transactions: 0,
-          profit: 0,
-          cost: 0,
-          itemsSold: 0,
-          immediateRevenue: 0
-        };
+        const shop = shops.find(s => s._id.toString() === shopId.toString()) || { name: 'Unknown Shop' };
+        shopMap[shopId] = { id: shopId, name: shop.name, revenue: 0, transactions: 0, profit: 0, cost: 0, itemsSold: 0, immediateRevenue: 0 };
       }
       shopMap[shopId].revenue += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
       shopMap[shopId].transactions += 1;
       shopMap[shopId].profit += CalculationUtils.safeNumber(transaction.profit);
-      shopMap[shopId].cost += CalculationUtils.safeNumber(transaction.cost);
       shopMap[shopId].itemsSold += CalculationUtils.safeNumber(transaction.itemsCount);
-      shopMap[shopId].immediateRevenue += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
     });
-    return Object.values(shopMap)
-      .map(shop => ({
-        ...shop,
-        profitMargin: CalculationUtils.calculateProfitMargin(shop.revenue, shop.profit),
-        averageTransaction: shop.transactions > 0 ? shop.revenue / shop.transactions : 0
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
+    return Object.values(shopMap).map(s => ({ ...s, profitMargin: CalculationUtils.calculateProfitMargin(s.revenue, s.profit) })).sort((a, b) => b.revenue - a.revenue);
   }
 };
 
-// ==================== OPTIMIZED TRANSACTION DATA FETCHING ====================
-
+// ==================== TRANSACTION DATA FETCHING ====================
 const getAllTransactionData = async (filters = {}) => {
   try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod,
-      status
-    } = filters;
+    const { startDate, endDate, shopId, cashierId, paymentMethod, status } = filters;
 
-    if (!models.Transaction) {
-      console.log('⚠️ Models not ready, initializing...');
-      models = createModels();
-    }
+    if (!models.Transaction) models = createModels();
 
-    let filter = {
-      status: { $in: ['completed', 'credit'] }
-    };
+    let filter = { status: { $in: ['completed', 'credit'] } };
 
-    if (startDate && endDate) {
-      filter.saleDate = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    if (shopId && shopId !== 'all') {
-      filter.$or = [
-        { shop: shopId },
-        { shopId: shopId }
-      ];
-    }
+    if (startDate && endDate) filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
 
     const transactionProjection = {
       totalAmount: 1, cost: 1, profit: 1, profitMargin: 1,
@@ -1573,279 +1265,51 @@ const getAllTransactionData = async (filters = {}) => {
         .populate('shop', 'name location type')
         .populate('cashierId', 'name email')
         .populate('items.productId', 'name buyingPrice')
-        .sort({ saleDate: -1 })
-        .lean()
-        .maxTimeMS(30000),
+        .sort({ saleDate: -1 }).lean().maxTimeMS(30000),
       models.Shop.find({}, 'name location type').lean(),
       models.Cashier.find({}, 'name email shopId shopName').lean(),
       models.Product.find({}, 'name buyingPrice currentStock shop shopName').lean(),
-      models.Expense.find(startDate && endDate ? {
-        date: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}, 'description amount category date shop shopId shopName recordedBy')
-        .populate('shop', 'name')
-        .lean(),
-      models.Credit.find(startDate && endDate ? {
-        createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}, 'transactionId customerName customerPhone totalAmount amountPaid balanceDue dueDate status shop shopId shopName cashierId cashierName upfrontPaymentAmount immediateRevenue paymentHistory')
-        .populate('transactionId', 'totalAmount saleDate')
-        .populate('shop', 'name location')
-        .populate('cashierId', 'name email')
-        .lean()
+      models.Expense.find(startDate && endDate ? { date: { $gte: new Date(startDate), $lte: new Date(endDate) } } : {}, 'description amount category date shop shopId shopName recordedBy').populate('shop', 'name').lean(),
+      models.Credit.find(startDate && endDate ? { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } } : {}, 'transactionId customerName customerPhone totalAmount amountPaid balanceDue dueDate status shop shopId shopName cashierId cashierName upfrontPaymentAmount immediateRevenue paymentHistory').populate('transactionId', 'totalAmount saleDate').populate('shop', 'name location').populate('cashierId', 'name email').lean()
     ]);
 
-    const processedData = await CalculationUtils.processComprehensiveData({
-      transactions,
-      shops,
-      cashiers,
-      products,
-      expenses,
-      credits
-    }, shopId);
-
-    return processedData;
+    return await CalculationUtils.processComprehensiveData({ transactions, shops, cashiers, products, expenses, credits }, shopId);
   } catch (error) {
     console.error('❌ Error in getAllTransactionData:', error);
     throw error;
   }
 };
 
-// ==================== AUTHENTICATION FUNCTIONS ====================
-
-const generateSecureCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+// ==================== AUTH FUNCTIONS ====================
+const generateSecureCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const sendSecureCodeEmail = async (email, code) => {
   try {
-    // Ensure email transporter is initialized
     if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing for secure code...');
       await initializeEmail();
-      if (!emailTransporter) {
-        throw new Error('Email service not configured');
-      }
+      if (!emailTransporter) throw new Error('Email service not configured');
     }
-
-    console.log(`📧 Sending secure code to ${email}`);
-
-    const mailOptions = {
+    await emailTransporter.sendMail({
       from: `"${process.env.APP_NAME || 'Shop Management'}" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'Your Secure Login Code - The Place Shop Management',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-            ${process.env.APP_NAME || 'Shop Management'} - Secure Login
-          </h2>
-          <p>Hello,</p>
-          <p>Your secure login code for ${process.env.APP_NAME || 'The Place Shop Management System'} is:</p>
-          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
-            ${code}
-          </div>
-          <p style="color: #666; font-size: 14px;">
-            This code will expire in 15 minutes for security reasons.
-          </p>
-          <p style="color: #999; font-size: 12px;">
-            If you didn't request this code, please ignore this email or contact support if you're concerned.
-          </p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #888; font-size: 11px;">
-            This is an automated message from ${process.env.APP_NAME || 'The Place Shop Management System'}.
-          </p>
-        </div>
-      `
-    };
-
-    await emailTransporter.sendMail(mailOptions);
-    console.log(`✅ Secure code sent to ${email}`);
+      subject: 'Your Secure Login Code',
+      html: `<h2>Your Secure Code</h2><p>Your secure login code is: <strong style="font-size:32px;">${code}</strong></p><p>This code expires in 15 minutes.</p>`
+    });
     return true;
   } catch (error) {
     console.error(`❌ Failed to send secure code to ${email}:`, error.message);
-    throw new Error('Failed to send secure code. Please try again later.');
+    throw new Error('Failed to send secure code.');
   }
 };
 
 const generateAuthToken = (userId, email, role) => {
-  try {
-    const secret = process.env.JWT_SECRET || 'fallback-secret-key-change-in-production';
-    const expiresIn = process.env.JWT_EXPIRES_IN || '8h';
-    const payload = {
-      userId: userId.toString(),
-      email: email,
-      role: role || 'cashier',
-      timestamp: Date.now()
-    };
-    return jwt.sign(payload, secret, { expiresIn });
-  } catch (error) {
-    console.error('❌ Error generating auth token:', error);
-    throw new Error('Failed to generate authentication token');
-  }
+  return jwt.sign(
+    { userId: userId.toString(), email, role: role || 'cashier', timestamp: Date.now() },
+    process.env.JWT_SECRET || 'fallback-secret-key-change-in-production',
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+  );
 };
 
-// ==================== EMAIL NOTIFICATIONS - FIXED ====================
-const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
-  try {
-    console.log('📧 ===== SENDING DEVICE VERIFICATION EMAIL =====');
-    console.log('📧 User:', user.email, user.name);
-    console.log('📧 Device:', device.deviceName);
-    console.log('📧 Request ID:', verificationRequest._id);
-
-    // Ensure email transporter is initialized
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      const initialized = await initializeEmail();
-      if (!initialized || !emailTransporter) {
-        console.error('❌ Email transporter could not be initialized');
-        return false;
-      }
-    }
-
-    // Verify transporter
-    try {
-      console.log('🔄 Verifying email transporter...');
-      await emailTransporter.verify();
-      console.log('✅ Email transporter verified successfully');
-    } catch (verifyError) {
-      console.error('❌ Email transporter verification failed:', verifyError.message);
-      // Try to reinitialize
-      console.log('🔄 Attempting to reinitialize email transporter...');
-      const reinit = await initializeEmail();
-      if (!reinit || !emailTransporter) {
-        console.error('❌ Failed to reinitialize email transporter');
-        return false;
-      }
-      try {
-        await emailTransporter.verify();
-        console.log('✅ Email transporter re-verified successfully');
-      } catch (reVerifyError) {
-        console.error('❌ Email transporter re-verification failed:', reVerifyError.message);
-        return false;
-      }
-    }
-
-    // ============================================================
-    // 🔑 FIX: Define adminEmails FIRST before using it!
-    // ============================================================
-    console.log('🔍 Finding admin users...');
-    let adminEmails = [];
-    try {
-      const admins = await models.User.find({ role: 'admin' }).select('email name');
-      adminEmails = admins.map(a => a.email);
-      console.log(`📧 Found ${adminEmails.length} admin users:`, adminEmails);
-    } catch (error) {
-      console.error('❌ Error finding admin users:', error);
-    }
-
-    // If no admins found, use default
-    if (adminEmails.length === 0) {
-      console.log('ℹ️ No admin users found, using default admin email');
-      const defaultAdmin = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-      adminEmails.push(defaultAdmin);
-      console.log(`📧 Using default admin email: ${defaultAdmin}`);
-    }
-
-    // Also add the user's email if they're not an admin
-    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
-      adminEmails.push(user.email);
-      console.log(`📧 Added user's email to notification list: ${user.email}`);
-    }
-
-    // NOW we can safely use adminEmails
-    console.log('📧 From:', `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`);
-    console.log('📧 To:', adminEmails.join(', '));
-    console.log('📧 Subject:', `🔐 New Device Login Request - ${user.name || 'Unknown User'}`);
-
-    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
-    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
-    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa;">
-        <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 20px; text-align: center; color: white; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0;">🔐 New Device Verification Request</h1>
-        </div>
-        <div style="background: white; padding: 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <h2 style="color: #333;">Device Login Request</h2>
-          <p>A user is trying to log in from a new device. Please verify this request.</p>
-
-          <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 15px 0;">
-            <p><strong>👤 User:</strong> ${user.name || 'Unknown User'} (${user.email})</p>
-            <p><strong>🔑 Role:</strong> ${user.role || 'Cashier'}</p>
-            <p><strong>💻 Device:</strong> ${device.deviceName || 'Unknown Device'}</p>
-            <p><strong>🖥️ OS:</strong> ${device.os || 'Unknown'} ${device.osVersion || ''}</p>
-            <p><strong>🌐 Browser:</strong> ${device.browser || 'Unknown'} ${device.browserVersion || ''}</p>
-            <p><strong>📱 MAC Address:</strong> ${device.macAddress || 'Unknown'}</p>
-            <p><strong>🌍 IP Address:</strong> ${device.ipAddress || 'Unknown'}</p>
-            <p><strong>📅 Request Time:</strong> ${new Date().toLocaleString()}</p>
-            <p><strong>⏰ Expires:</strong> ${new Date(verificationRequest.expiresAt).toLocaleString()}</p>
-          </div>
-
-          <div style="margin: 20px 0; text-align: center;">
-            <p style="font-weight: bold; font-size: 16px;">Click below to approve or reject this device:</p>
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-              <a href="${approveLink}"
-                 style="background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
-                ✅ Approve Device
-              </a>
-              <a href="${rejectLink}"
-                 style="background: #EF4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; font-weight: bold;">
-                ❌ Reject Device
-              </a>
-            </div>
-            <p style="margin-top: 15px; color: #666; font-size: 14px;">
-              Or go to the Admin Dashboard > Device Verification Requests
-            </p>
-          </div>
-
-          <div style="background: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400E;">
-              <strong>⚠️ Security Alert:</strong> If you didn't approve this login request, please investigate immediately.
-            </p>
-          </div>
-        </div>
-        <div style="text-align: center; padding: 15px; font-size: 12px; color: #666;">
-          <p>This is an automated security notification from ${process.env.APP_NAME || 'The Place Shop Management System'}.</p>
-          <p>Please do not reply to this email.</p>
-        </div>
-      </div>
-    `;
-
-    // Send email to each recipient
-    let sentCount = 0;
-    console.log(`📧 Sending to ${adminEmails.length} recipients...`);
-
-    for (const adminEmail of adminEmails) {
-      try {
-        console.log(`📧 Attempting to send to: ${adminEmail}`);
-        const result = await emailTransporter.sendMail({
-          from: `"${process.env.APP_NAME || 'Shop Management'} Security" <${process.env.EMAIL_USER}>`,
-          to: adminEmail,
-          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
-          html: html,
-          priority: 'high'
-        });
-        sentCount++;
-        console.log(`✅ Email sent to ${adminEmail}:`, result.messageId);
-      } catch (error) {
-        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
-        if (error.response) {
-          console.error('📧 Email service response:', error.response);
-        }
-      }
-    }
-
-    console.log(`📧 ===== DEVICE VERIFICATION EMAIL SUMMARY =====`);
-    console.log(`📧 Successfully sent to ${sentCount} of ${adminEmails.length} recipients`);
-    console.log(`📧 =============================================`);
-
-    return sentCount > 0;
-
-  } catch (error) {
-    console.error('❌ Error in sendDeviceVerificationEmail:', error);
-    console.error('❌ Error stack:', error.stack);
-    return false;
-  }
-};
 // ==================== API ROUTES ====================
 
 // Health check
@@ -1854,12 +1318,10 @@ app.get('/api/health', (req, res) => {
     success: true,
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    app: process.env.APP_NAME || 'The Place Shop Management',
+    app: process.env.APP_NAME || 'Pamela Management',
     version: process.env.APP_VERSION || '1.0.0',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     email: emailTransporter ? 'configured' : 'disabled',
-    emailInitialized: emailInitialized,
-    authentication: 'email-based-secure-code',
     deviceVerification: 'enabled',
     sessionManagement: 'enabled',
     cogsCalculation: 'prorated_based_on_payment',
@@ -1869,1405 +1331,323 @@ app.get('/api/health', (req, res) => {
     upfrontPaymentTracking: 'enhanced',
     serverless: true,
     stockMonitoring: 'on-demand',
-    modelsInitialized: modelsInitialized,
-    modelsAvailable: Object.keys(models).join(', ')
+    modelsInitialized: modelsInitialized
   });
 });
 
-// Debug email config endpoint
-app.get('/api/debug/email-config', async (req, res) => {
-  try {
-    const emailConfig = {
-      hasEmailUser: !!process.env.EMAIL_USER,
-      hasEmailPassword: !!process.env.EMAIL_PASSWORD,
-      emailUser: process.env.EMAIL_USER || 'Not set',
-      adminEmail: process.env.ADMIN_EMAIL || 'Not set',
-      transporterExists: !!emailTransporter,
-      emailInitialized: emailInitialized,
-      isDevelopment: process.env.NODE_ENV === 'development',
-      isVercel: !!process.env.VERCEL,
-      frontendUrl: process.env.FRONTEND_URL || 'Not set'
-    };
-
-    let transporterVerified = false;
-    let verifyError = null;
-    if (emailTransporter) {
-      try {
-        await emailTransporter.verify();
-        transporterVerified = true;
-        console.log('✅ Email transporter verified successfully');
-      } catch (error) {
-        console.error('❌ Transporter verification failed:', error.message);
-        verifyError = error.message;
-      }
-    }
-
-    const pendingRequests = await VerificationRequest.countDocuments({ status: 'pending' });
-    const totalDevices = await Device.countDocuments();
-
-    res.json({
-      success: true,
-      data: {
-        emailConfig,
-        transporterVerified,
-        verifyError,
-        pendingRequests,
-        totalDevices,
-        dbStatus: {
-          isConnected: mongoose.connection.readyState === 1,
-          dbName: mongoose.connection.name
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error checking email config:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check email configuration',
-      error: error.message
-    });
-  }
-});
-// ==================== MANUAL DEVICE APPROVAL (EMERGENCY) ====================
-
-// Emergency manual approval - Bypass email verification
-app.post('/api/admin/manual-approve-device', async (req, res) => {
-  try {
-    const { email, secretKey } = req.body;
-    
-    console.log('🔑 Manual approval request for:', email);
-    
-    // Security: Use a strong secret key from environment
-    const validKey = process.env.MANUAL_APPROVAL_KEY || 'temp-key-change-me';
-    
-    if (!secretKey || secretKey !== validKey) {
-      console.log('❌ Invalid secret key provided');
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Invalid or missing secret key' 
-      });
-    }
-    
-    // Find user
-    let user = await models.User.findOne({ email });
-    if (!user) {
-      user = await models.Cashier.findOne({ email });
-    }
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-    
-    console.log('✅ User found:', user.email, user.name);
-    
-    // Find pending devices
-    const pendingDevices = await models.Device.find({
-      userId: user._id,
-      isVerified: false
-    });
-    
-    console.log(`📱 Found ${pendingDevices.length} pending devices`);
-    
-    // Approve all pending devices
-    const result = await models.Device.updateMany(
-      { userId: user._id, isVerified: false },
-      { $set: { isVerified: true, updatedAt: new Date() } }
-    );
-    
-    // Delete pending verification requests
-    const deleteResult = await models.VerificationRequest.deleteMany({
-      userId: user._id,
-      status: 'pending'
-    });
-    
-    console.log(`✅ Approved ${result.modifiedCount} device(s), deleted ${deleteResult.deletedCount} verification requests`);
-    
-    res.json({
-      success: true,
-      message: `Approved ${result.modifiedCount} device(s) for ${user.email}`,
-      data: {
-        modifiedCount: result.modifiedCount,
-        deletedRequests: deleteResult.deletedCount,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role || 'cashier'
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Manual approval error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to approve device',
-      error: error.message 
-    });
-  }
-});
-
-// Check pending devices for a user
-app.get('/api/admin/check-pending-devices', async (req, res) => {
-  try {
-    const { email } = req.query;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email parameter required'
-      });
-    }
-    
-    let user = await models.User.findOne({ email });
-    if (!user) {
-      user = await models.Cashier.findOne({ email });
-    }
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    const pendingDevices = await models.Device.find({
-      userId: user._id,
-      isVerified: false
-    });
-    
-    const pendingRequests = await models.VerificationRequest.find({
-      userId: user._id,
-      status: 'pending'
-    });
-    
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email
-        },
-        pendingDevices: pendingDevices.map(d => ({
-          id: d._id,
-          deviceName: d.deviceName,
-          os: d.os,
-          browser: d.browser,
-          macAddress: d.macAddress,
-          createdAt: d.createdAt
-        })),
-        pendingRequests: pendingRequests.map(r => ({
-          id: r._id,
-          requestToken: r.requestToken,
-          expiresAt: r.expiresAt,
-          createdAt: r.createdAt
-        })),
-        counts: {
-          devices: pendingDevices.length,
-          requests: pendingRequests.length
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error checking pending devices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check pending devices',
-      error: error.message
-    });
-  }
-});
-// Test email sending endpoint
-app.post('/api/debug/test-email', async (req, res) => {
-  try {
-    console.log('📧 Testing email sending...');
-    
-    if (!emailTransporter) {
-      console.log('🔄 Email transporter not initialized, initializing...');
-      await initializeEmail();
-    }
-
-    if (!emailTransporter) {
-      return res.status(500).json({
-        success: false,
-        message: 'Email transporter not available'
-      });
-    }
-
-    await emailTransporter.verify();
-    console.log('✅ Transporter verified');
-
-    const testEmail = req.body.email || process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-    
-    const result = await emailTransporter.sendMail({
-      from: `"${process.env.APP_NAME || 'Shop Management'} Test" <${process.env.EMAIL_USER}>`,
-      to: testEmail,
-      subject: 'Test Email from POS System',
-      html: `
-        <h1>Test Email</h1>
-        <p>This is a test email to verify that the email configuration is working.</p>
-        <p>Time: ${new Date().toLocaleString()}</p>
-        <p>If you received this, the email configuration is correct!</p>
-      `
-    });
-
-    console.log('✅ Test email sent:', result.messageId);
-
-    res.json({
-      success: true,
-      message: 'Test email sent successfully',
-      messageId: result.messageId,
-      sentTo: testEmail
-    });
-
-  } catch (error) {
-    console.error('❌ Test email failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Test email failed',
-      error: error.message
-    });
-  }
-});
-
-// ==================== STOCK MONITORING ENDPOINTS ====================
-
-app.post('/api/stock/check-now', async (req, res) => {
-  try {
-    console.log('🔍 Manual stock check triggered');
-    const result = await checkStockLevels();
-
-    res.json({
-      success: true,
-      data: result,
-      message: `Stock check completed: ${result.outOfStock} out of stock, ${result.lowStock} low stock`
-    });
-  } catch (error) {
-    console.error('❌ Error in manual stock check:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check stock levels',
-      error: error.message
-    });
-  }
-});
-
-app.get('/api/stock/alerts', async (req, res) => {
-  try {
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location')
-      .lean();
-
-    const outOfStockProducts = products.filter(p => (p.currentStock || 0) === 0);
-    const lowStockProducts = products.filter(p => {
-      const stock = p.currentStock || 0;
-      const minStock = p.minStockLevel || 5;
-      return stock > 0 && stock <= minStock;
-    });
-
-    res.json({
-      success: true,
-      data: {
-        outOfStock: outOfStockProducts.map(p => ({
-          ...p,
-          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
-          status: 'out_of_stock'
-        })),
-        lowStock: lowStockProducts.map(p => ({
-          ...p,
-          shopName: p.shop?.name || p.shopName || 'Unknown Shop',
-          status: 'low_stock'
-        })),
-        summary: {
-          totalProducts: products.length,
-          outOfStock: outOfStockProducts.length,
-          lowStock: lowStockProducts.length,
-          inStock: products.length - outOfStockProducts.length - lowStockProducts.length
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error getting stock alerts:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get stock alerts',
-      error: error.message
-    });
-  }
-});
-
-// ==================== AUTHENTICATION ROUTES ====================
+// ==================== AUTH ROUTES ====================
 
 // Request secure code
-app.post('/api/auth/request-code',
-  [
-    body('email').isEmail().normalizeEmail()
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid email address',
-          details: errors.array()
-        });
-      }
+app.post('/api/auth/request-code', [body('email').isEmail().normalizeEmail()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, error: 'Invalid email', details: errors.array() });
 
-      const { email } = req.body;
-      console.log('📧 Secure code request for:', email);
+    const { email } = req.body;
+    const user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
 
-      const user = await models.User.findOne({ email }) ||
-                   await models.Cashier.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'No account found with this email' });
 
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'No account found with this email address'
-        });
-      }
+    const secureCode = generateSecureCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const hashedCode = await bcrypt.hash(secureCode, 10);
 
-      const secureCode = generateSecureCode();
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+    await models.SecureCode.findOneAndUpdate(
+      { email },
+      { code: hashedCode, expiresAt, attempts: 0, used: false },
+      { upsert: true, new: true }
+    );
 
-      const hashedCode = await bcrypt.hash(secureCode, 10);
-
-      await models.SecureCode.findOneAndUpdate(
-        { email },
-        {
-          code: hashedCode,
-          expiresAt,
-          attempts: 0,
-          used: false
-        },
-        { upsert: true, new: true }
-      );
-
-      // If email is not configured, return the code for development
-      if (!emailTransporter) {
-        console.log('⚠️ Email service not configured - returning code for development');
-        return res.json({
-          success: true,
-          message: 'Secure code generated (email service disabled)',
-          developmentMode: true,
-          secureCode: secureCode,
-          expiresIn: 15
-        });
-      }
-
-      try {
-        await sendSecureCodeEmail(email, secureCode);
-        res.json({
-          success: true,
-          message: 'Secure code sent to your email',
-          expiresIn: 15
-        });
-      } catch (emailError) {
-        console.error('❌ Failed to send email:', emailError);
-        await models.SecureCode.deleteOne({ email });
-        res.status(500).json({
-          success: false,
-          message: 'Failed to send secure code. Please try again later.'
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error requesting secure code:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to process request. Please try again later.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
+    if (!emailTransporter) {
+      return res.json({ success: true, message: 'Secure code generated (email disabled)', developmentMode: true, secureCode, expiresIn: 15 });
     }
-  }
-);
 
-// Verify secure code - With Device Verification
-app.post('/api/auth/verify-code',
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('code').isLength({ min: 6, max: 6 }).isNumeric()
-  ],
-  async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid input data',
-          details: errors.array()
-        });
-      }
+      await sendSecureCodeEmail(email, secureCode);
+      res.json({ success: true, message: 'Secure code sent to your email', expiresIn: 15 });
+    } catch (emailError) {
+      await models.SecureCode.deleteOne({ email });
+      res.status(500).json({ success: false, message: 'Failed to send secure code.' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to process request.' });
+  }
+});
 
-      const { email, code } = req.body;
-      console.log('🔐 Secure code verification for:', email);
+// Verify secure code with device verification
+app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), body('code').isLength({ min: 6, max: 6 }).isNumeric()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid input' });
 
-      if (!models.SecureCode) {
-        return res.status(500).json({
-          success: false,
-          message: 'System configuration error. Please contact administrator.'
-        });
-      }
+    const { email, code } = req.body;
+    const secureCode = await models.SecureCode.findOne({ email });
 
-      let secureCode;
-      try {
-        secureCode = await models.SecureCode.findOne({ email });
-      } catch (dbError) {
-        console.error('❌ Database error finding secure code:', dbError);
-        return res.status(500).json({
-          success: false,
-          message: 'Database error. Please try again.'
-        });
-      }
+    if (!secureCode) return res.status(404).json({ success: false, message: 'No secure code found. Request a new one.' });
+    if (new Date() > secureCode.expiresAt) return res.status(400).json({ success: false, message: 'Code expired. Request a new one.' });
+    if (secureCode.used) return res.status(400).json({ success: false, message: 'Code already used.' });
+    if (secureCode.attempts >= 5) return res.status(400).json({ success: false, message: 'Too many attempts. Request a new code.' });
 
-      if (!secureCode) {
-        return res.status(404).json({
-          success: false,
-          message: 'No secure code found for this email. Please request a new code.'
-        });
-      }
+    const isValidCode = await bcrypt.compare(code, secureCode.code);
+    if (!isValidCode) {
+      secureCode.attempts += 1;
+      await secureCode.save();
+      return res.status(400).json({ success: false, message: 'Invalid code', attemptsRemaining: 5 - secureCode.attempts });
+    }
 
-      const now = new Date();
-      if (now > secureCode.expiresAt) {
-        try {
-          await models.SecureCode.deleteOne({ email });
-        } catch (deleteError) {
-          console.error('❌ Error deleting expired code:', deleteError);
-        }
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has expired. Please request a new code.'
-        });
-      }
+    secureCode.used = true;
+    await secureCode.save();
 
-      if (secureCode.used) {
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has already been used. Please request a new code.'
-        });
-      }
+    let user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (user.isActive === false) return res.status(403).json({ success: false, message: 'Account deactivated.' });
 
-      if (secureCode.attempts >= 5) {
-        try {
-          await models.SecureCode.deleteOne({ email });
-        } catch (deleteError) {
-          console.error('❌ Error deleting code after max attempts:', deleteError);
-        }
-        return res.status(400).json({
-          success: false,
-          message: 'Too many failed attempts. Please request a new code.'
-        });
-      }
+    const deviceInfo = getDeviceInfo(req);
+    let device = await Device.findOne({ userId: user._id, deviceId: deviceInfo.deviceId });
 
-      let isValidCode = false;
-      try {
-        isValidCode = await bcrypt.compare(code, secureCode.code);
-      } catch (bcryptError) {
-        console.error('❌ Bcrypt comparison error:', bcryptError);
-        return res.status(500).json({
-          success: false,
-          message: 'Error verifying code. Please try again.'
-        });
-      }
-
-      if (!isValidCode) {
-        secureCode.attempts += 1;
-        try {
-          await secureCode.save();
-        } catch (saveError) {
-          console.error('❌ Error saving attempt count:', saveError);
-        }
-        const attemptsRemaining = 5 - secureCode.attempts;
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid secure code',
-          attemptsRemaining: attemptsRemaining
-        });
-      }
-
-      secureCode.used = true;
-      try {
-        await secureCode.save();
-      } catch (saveError) {
-        console.error('❌ Error marking code as used:', saveError);
-      }
-
-      // Find user
-      let user = await models.User.findOne({ email });
-      if (!user) {
-        user = await models.Cashier.findOne({ email });
-      }
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User account not found. Please contact administrator.'
-        });
-      }
-
-      if (user.isActive === false) {
-        return res.status(403).json({
-          success: false,
-          message: 'Your account has been deactivated. Please contact administrator.'
-        });
-      }
-
-      // Get device info
-      const deviceInfo = getDeviceInfo(req);
-
-      // Check if device exists and is verified
-      let device = await Device.findOne({
-        userId: user._id,
-        deviceId: deviceInfo.deviceId
+    if (!device) {
+      device = new Device({
+        userId: user._id, deviceId: deviceInfo.deviceId,
+        deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType,
+        os: deviceInfo.os, osVersion: deviceInfo.osVersion,
+        browser: deviceInfo.browser, browserVersion: deviceInfo.browserVersion,
+        macAddress: deviceInfo.macAddress, ipAddress: deviceInfo.ipAddress,
+        isVerified: user.role === 'admin',
+        firstLogin: new Date(), lastLogin: new Date()
       });
-
-      if (!device) {
-        // New device - create and require verification (auto-verify admin)
-        device = new Device({
-          userId: user._id,
-          deviceId: deviceInfo.deviceId,
-          deviceName: deviceInfo.deviceName,
-          deviceType: deviceInfo.deviceType,
-          os: deviceInfo.os,
-          osVersion: deviceInfo.osVersion,
-          browser: deviceInfo.browser,
-          browserVersion: deviceInfo.browserVersion,
-          macAddress: deviceInfo.macAddress,
-          ipAddress: deviceInfo.ipAddress,
-          isVerified: user.role === 'admin',
-          firstLogin: new Date(),
-          lastLogin: new Date()
-        });
-        await device.save();
-
-        if (user.role !== 'admin') {
-          const requestToken = crypto.randomBytes(32).toString('hex');
-          const verificationRequest = new VerificationRequest({
-            userId: user._id,
-            deviceId: device._id,
-            requestToken: requestToken,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            ipAddress: deviceInfo.ipAddress,
-            userAgent: deviceInfo.userAgent
-          });
-          await verificationRequest.save();
-
-          // Send verification email - with improved error handling
-          console.log('📧 Attempting to send device verification email...');
-          const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
-          console.log(`📧 Device verification email sent: ${emailSent}`);
-          
-          if (!emailSent) {
-            console.log('⚠️ Failed to send verification email, but device request was created');
-            // Still proceed with the response, just log the error
-          }
-
-          return res.status(403).json({
-            success: false,
-            requiresVerification: true,
-            message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
-            deviceInfo: {
-              deviceName: device.deviceName,
-              os: device.os,
-              browser: device.browser,
-              macAddress: device.macAddress
-            }
-          });
-        }
-      } else if (!device.isVerified) {
-        const pendingRequest = await VerificationRequest.findOne({
-          deviceId: device._id,
-          status: 'pending'
-        });
-
-        if (!pendingRequest) {
-          const requestToken = crypto.randomBytes(32).toString('hex');
-          const verificationRequest = new VerificationRequest({
-            userId: user._id,
-            deviceId: device._id,
-            requestToken: requestToken,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            ipAddress: deviceInfo.ipAddress,
-            userAgent: deviceInfo.userAgent
-          });
-          await verificationRequest.save();
-          
-          console.log('📧 Attempting to send device verification email for pending device...');
-          const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
-          console.log(`📧 Device verification email sent: ${emailSent}`);
-        }
-
-        return res.status(403).json({
-          success: false,
-          requiresVerification: true,
-          message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
-          deviceInfo: {
-            deviceName: device.deviceName,
-            os: device.os,
-            browser: device.browser,
-            macAddress: device.macAddress
-          }
-        });
-      }
-
-      // Update device login info
-      device.lastLogin = new Date();
-      device.loginCount = (device.loginCount || 0) + 1;
-      device.ipAddress = deviceInfo.ipAddress;
       await device.save();
 
-      // Update user last login
-      user.lastLogin = new Date();
-      await user.save();
+      if (user.role !== 'admin') {
+        const requestToken = crypto.randomBytes(32).toString('hex');
+        const verificationRequest = new VerificationRequest({
+          userId: user._id, deviceId: device._id, requestToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+        });
+        await verificationRequest.save();
+        await sendDeviceVerificationEmail(user, device, verificationRequest);
 
-      // Generate token
-      let token;
-      try {
-        token = generateAuthToken(user._id, user.email, user.role || 'cashier');
-      } catch (tokenError) {
-        console.error('❌ Error generating token:', tokenError);
-        return res.status(500).json({
-          success: false,
-          message: 'Error generating authentication token. Please try again.'
+        return res.status(403).json({
+          success: false, requiresVerification: true,
+          message: 'New device detected. Please wait for admin approval.',
+          deviceInfo: { deviceName: device.deviceName, os: device.os, browser: device.browser, macAddress: device.macAddress }
         });
       }
-
-      // Create session
-      const session = new Session({
-        userId: user._id,
-        deviceId: device._id,
-        token: token,
-        lastActivity: new Date(),
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-        ipAddress: deviceInfo.ipAddress,
-        userAgent: deviceInfo.userAgent
-      });
-      await session.save();
-
-      device.sessions.push(session._id);
-      await device.save();
-
-      // Log login history
-      await LoginHistory.create({
-        userId: user._id,
-        email: user.email,
-        role: user.role || 'cashier',
-        success: true,
-        ipAddress: deviceInfo.ipAddress,
-        userAgent: deviceInfo.userAgent,
-        deviceId: deviceInfo.deviceId,
-        macAddress: deviceInfo.macAddress,
-        os: deviceInfo.os,
-        browser: deviceInfo.browser
-      });
-
-      const userData = {
-        _id: user._id,
-        name: user.name || 'User',
-        email: user.email,
-        role: user.role || 'cashier',
-        isActive: user.isActive !== false,
-        lastLogin: user.lastLogin || new Date()
-      };
-
-      if (user.role === 'cashier') {
-        if (user.shopId) userData.shopId = user.shopId;
-        if (user.shopName) userData.shopName = user.shopName;
+    } else if (!device.isVerified) {
+      const pendingRequest = await VerificationRequest.findOne({ deviceId: device._id, status: 'pending' });
+      if (!pendingRequest) {
+        const requestToken = crypto.randomBytes(32).toString('hex');
+        const verificationRequest = new VerificationRequest({
+          userId: user._id, deviceId: device._id, requestToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+        });
+        await verificationRequest.save();
+        await sendDeviceVerificationEmail(user, device, verificationRequest);
       }
-
-      if (user.role === 'admin') {
-        userData.isAdmin = true;
-      }
-
-      return res.status(200).json({
-        success: true,
-        user: userData,
-        token: token,
-        device: {
-          id: device._id,
-          deviceName: device.deviceName,
-          os: device.os,
-          browser: device.browser,
-          macAddress: device.macAddress,
-          isVerified: device.isVerified
-        },
-        sessionId: session._id,
-        message: 'Login successful',
-        sessionTimeout: 5
-      });
-
-    } catch (error) {
-      console.error('❌ Unexpected error in verify-code:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'An unexpected error occurred. Please try again.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
+      return res.status(403).json({ success: false, requiresVerification: true, message: 'Device pending verification.' });
     }
+
+    device.lastLogin = new Date();
+    device.loginCount = (device.loginCount || 0) + 1;
+    await device.save();
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
+    const session = new Session({
+      userId: user._id, deviceId: device._id, token,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+    });
+    await session.save();
+
+    const userData = { _id: user._id, name: user.name, email: user.email, role: user.role || 'cashier', lastLogin: user.lastLogin };
+    if (user.role === 'cashier') { userData.shopId = user.shopId; userData.shopName = user.shopName; }
+
+    return res.status(200).json({ success: true, user: userData, token, device: { id: device._id, deviceName: device.deviceName, os: device.os, browser: device.browser, isVerified: device.isVerified }, sessionId: session._id, message: 'Login successful', sessionTimeout: 5 });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
   }
-);
+});
 
 // Cashier Login
 app.post('/api/auth/cashier/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password'
-      });
-    }
+    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
 
     const normalizedEmail = email.toLowerCase().trim();
-
-    let user = await models.User.findOne({
-      email: normalizedEmail,
-      role: { $in: ['cashier', 'admin'] }
-    });
-
+    let user = await models.User.findOne({ email: normalizedEmail, role: { $in: ['cashier', 'admin'] } });
     let cashier = null;
 
     if (!user) {
-      cashier = await models.Cashier.findOne({
-        email: normalizedEmail,
-        status: 'active'
-      }).populate('shopId', 'name location');
-
-      if (!cashier) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cashier account not found'
-        });
-      }
+      cashier = await models.Cashier.findOne({ email: normalizedEmail, status: 'active' }).populate('shopId', 'name location');
+      if (!cashier) return res.status(404).json({ success: false, message: 'Cashier account not found' });
     }
 
     if (user) {
-      cashier = await models.Cashier.findOne({
-        email: normalizedEmail,
-        status: 'active'
-      }).populate('shopId', 'name location');
-
+      cashier = await models.Cashier.findOne({ email: normalizedEmail, status: 'active' }).populate('shopId', 'name location');
       if (!cashier) {
         if (user.role === 'admin') {
-          cashier = {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: 'active',
-            lastLogin: new Date(),
-            shopId: null,
-            shopName: null
-          };
+          cashier = { _id: user._id, name: user.name, email: user.email, role: user.role, status: 'active', lastLogin: new Date(), shopId: null, shopName: null };
         } else {
-          if (!user.password) {
-            return res.status(401).json({
-              success: false,
-              message: 'Invalid credentials. Please contact administrator.'
-            });
-          }
-
-          let isPasswordValid = false;
-          if (user.password.startsWith('$2b$')) {
-            isPasswordValid = await bcrypt.compare(password, user.password);
-          } else {
-            isPasswordValid = user.password === password;
-          }
-
-          if (!isPasswordValid) {
-            return res.status(401).json({
-              success: false,
-              message: 'Invalid password'
-            });
-          }
-
-          cashier = {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: 'active',
-            lastLogin: new Date(),
-            shopId: null,
-            shopName: null
-          };
+          if (!user.password) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+          const isPasswordValid = user.password.startsWith('$2b$') ? await bcrypt.compare(password, user.password) : user.password === password;
+          if (!isPasswordValid) return res.status(401).json({ success: false, message: 'Invalid password' });
+          cashier = { _id: user._id, name: user.name, email: user.email, role: user.role, status: 'active', lastLogin: new Date(), shopId: null, shopName: null };
         }
       }
     }
 
     if (cashier && cashier.password && cashier.password.startsWith('$2b$')) {
       const isPasswordValid = await bcrypt.compare(password, cashier.password);
-      if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid password'
-        });
-      }
-    }
-
-    if (cashier._id && models.Cashier) {
-      try {
-        await models.Cashier.findByIdAndUpdate(cashier._id, {
-          lastLogin: new Date()
-        });
-      } catch (err) {
-        console.log('Could not update cashier last login:', err.message);
-      }
+      if (!isPasswordValid) return res.status(401).json({ success: false, message: 'Invalid password' });
     }
 
     const token = generateAuthToken(cashier._id, cashier.email, cashier.role || 'cashier');
+    const userData = { _id: cashier._id, name: cashier.name, email: cashier.email, role: cashier.role || 'cashier', status: cashier.status || 'active', lastLogin: cashier.lastLogin, shopId: cashier.shopId?._id || null, shopName: cashier.shopId?.name || null };
 
-    const userData = {
-      _id: cashier._id,
-      name: cashier.name || 'Cashier',
-      email: cashier.email,
-      role: cashier.role || 'cashier',
-      status: cashier.status || 'active',
-      lastLogin: cashier.lastLogin || new Date(),
-      shopId: cashier.shopId?._id || cashier.shopId || null,
-      shopName: cashier.shopId?.name || cashier.shopName || null
-    };
-
-    res.json({
-      success: true,
-      user: userData,
-      token: token,
-      message: 'Login successful'
-    });
-
+    res.json({ success: true, user: userData, token, message: 'Login successful' });
   } catch (error) {
-    console.error('❌ Cashier login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during login. Please try again.',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });
 
-// Check if device is verified
+// Check device
 app.post('/api/auth/check-device', async (req, res) => {
   try {
     const { email, deviceInfo } = req.body;
+    let user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    console.log('📱 Checking device for:', email);
-    console.log('📱 Device ID:', deviceInfo.deviceId);
-
-    let user = await models.User.findOne({ email });
-    if (!user) {
-      user = await models.Cashier.findOne({ email });
-    }
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    console.log('✅ User found:', user.email, user.name);
-
-    // Try to find existing device FIRST
-    let device = await Device.findOne({
-      userId: user._id,
-      deviceId: deviceInfo.deviceId
-    });
-
-    console.log('🔍 Device found:', device ? 'Yes' : 'No');
+    let device = await Device.findOne({ userId: user._id, deviceId: deviceInfo.deviceId });
 
     if (device) {
-      console.log('📱 Existing device:', {
-        id: device._id,
-        name: device.deviceName,
-        isVerified: device.isVerified
-      });
-
-      // Device exists - check if verified
       if (!device.isVerified) {
-        const pendingRequest = await VerificationRequest.findOne({
-          deviceId: device._id,
-          status: 'pending'
-        });
-
+        const pendingRequest = await VerificationRequest.findOne({ deviceId: device._id, status: 'pending' });
         if (!pendingRequest) {
           const requestToken = crypto.randomBytes(32).toString('hex');
-          const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
           const newRequest = new VerificationRequest({
-            userId: user._id,
-            deviceId: device._id,
-            requestToken: requestToken,
-            expiresAt: expiresAt,
-            ipAddress: deviceInfo.ipAddress || 'unknown',
-            userAgent: deviceInfo.userAgent || 'unknown'
+            userId: user._id, deviceId: device._id, requestToken,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            ipAddress: deviceInfo.ipAddress || 'unknown', userAgent: deviceInfo.userAgent || 'unknown'
           });
           await newRequest.save();
-
-          console.log('📧 Attempting to send device verification email for pending device...');
-          const emailSent = await sendDeviceVerificationEmail(user, device, newRequest);
-          console.log(`📧 Device verification email sent: ${emailSent}`);
+          await sendDeviceVerificationEmail(user, device, newRequest);
         }
-
-        return res.json({
-          success: false,
-          requiresVerification: true,
-          message: 'Device pending verification. Please wait for admin approval. A verification email has been sent to administrators.',
-          deviceInfo: {
-            deviceName: device.deviceName,
-            os: device.os,
-            browser: device.browser,
-            macAddress: device.macAddress,
-            ipAddress: device.ipAddress,
-            deviceType: device.deviceType
-          }
-        });
+        return res.json({ success: false, requiresVerification: true, message: 'Device pending verification.', deviceInfo: { deviceName: device.deviceName, os: device.os, browser: device.browser, macAddress: device.macAddress } });
       }
-
-      // Device is verified - update login info
       device.lastLogin = new Date();
       device.loginCount = (device.loginCount || 0) + 1;
-      device.ipAddress = deviceInfo.ipAddress || 'unknown';
       await device.save();
-
-      return res.json({
-        success: true,
-        message: 'Device verified',
-        device: {
-          id: device._id,
-          deviceName: device.deviceName,
-          isVerified: device.isVerified
-        }
-      });
+      return res.json({ success: true, message: 'Device verified', device: { id: device._id, deviceName: device.deviceName, isVerified: device.isVerified } });
     }
 
-    // ============================================================
-    // DEVICE DOES NOT EXIST - Create new one
-    // ============================================================
-    console.log('🆕 Creating new device...');
-
-    // Check if device exists without userId (shouldn't happen but just in case)
-    const existingDeviceWithoutUser = await Device.findOne({
-      deviceId: deviceInfo.deviceId
+    const newDevice = new Device({
+      userId: user._id, deviceId: deviceInfo.deviceId,
+      deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType,
+      os: deviceInfo.os, osVersion: deviceInfo.osVersion,
+      browser: deviceInfo.browser, browserVersion: deviceInfo.browserVersion,
+      macAddress: deviceInfo.macAddress, ipAddress: deviceInfo.ipAddress,
+      isVerified: false, firstLogin: new Date(), lastLogin: new Date()
     });
+    await newDevice.save();
 
-    if (existingDeviceWithoutUser) {
-      console.log('⚠️ Device exists without userId - updating...');
-      // Update the existing device with the userId
-      existingDeviceWithoutUser.userId = user._id;
-      existingDeviceWithoutUser.deviceName = deviceInfo.deviceName || 'Unknown Device';
-      existingDeviceWithoutUser.deviceType = deviceInfo.deviceType || 'unknown';
-      existingDeviceWithoutUser.os = deviceInfo.os;
-      existingDeviceWithoutUser.osVersion = deviceInfo.osVersion;
-      existingDeviceWithoutUser.browser = deviceInfo.browser;
-      existingDeviceWithoutUser.browserVersion = deviceInfo.browserVersion;
-      existingDeviceWithoutUser.macAddress = deviceInfo.macAddress;
-      existingDeviceWithoutUser.ipAddress = deviceInfo.ipAddress || 'unknown';
-      existingDeviceWithoutUser.isVerified = false;
-      existingDeviceWithoutUser.firstLogin = new Date();
-      existingDeviceWithoutUser.lastLogin = new Date();
-      await existingDeviceWithoutUser.save();
-      
-      device = existingDeviceWithoutUser;
-    } else {
-      // Create completely new device
-      const newDevice = new Device({
-        userId: user._id,
-        deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName || 'Unknown Device',
-        deviceType: deviceInfo.deviceType || 'unknown',
-        os: deviceInfo.os || 'Unknown',
-        osVersion: deviceInfo.osVersion || '',
-        browser: deviceInfo.browser || 'Unknown',
-        browserVersion: deviceInfo.browserVersion || '',
-        macAddress: deviceInfo.macAddress || 'Unknown',
-        ipAddress: deviceInfo.ipAddress || 'unknown',
-        isVerified: false,
-        firstLogin: new Date(),
-        lastLogin: new Date()
-      });
-      await newDevice.save();
-      device = newDevice;
-    }
-
-    console.log('✅ New device created:', device._id);
-
-    // Create verification request for the new device
     const requestToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
     const verificationRequest = new VerificationRequest({
-      userId: user._id,
-      deviceId: device._id,
-      requestToken: requestToken,
-      expiresAt: expiresAt,
-      ipAddress: deviceInfo.ipAddress || 'unknown',
-      userAgent: deviceInfo.userAgent || 'unknown'
+      userId: user._id, deviceId: newDevice._id, requestToken,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      ipAddress: deviceInfo.ipAddress || 'unknown', userAgent: deviceInfo.userAgent || 'unknown'
     });
     await verificationRequest.save();
+    await sendDeviceVerificationEmail(user, newDevice, verificationRequest);
 
-    // Send verification email
-    console.log('📧 Attempting to send device verification email from check-device...');
-    const emailSent = await sendDeviceVerificationEmail(user, device, verificationRequest);
-    console.log(`📧 Device verification email sent: ${emailSent}`);
-
-    return res.json({
-      success: false,
-      requiresVerification: true,
-      message: 'New device detected. Please wait for admin approval. A verification email has been sent to administrators.',
-      requestId: verificationRequest._id,
-      deviceInfo: {
-        deviceName: device.deviceName,
-        os: device.os,
-        browser: device.browser,
-        macAddress: device.macAddress,
-        ipAddress: device.ipAddress,
-        deviceType: device.deviceType
-      }
-    });
-
+    return res.json({ success: false, requiresVerification: true, message: 'New device detected. Please wait for admin approval.', deviceInfo: { deviceName: newDevice.deviceName, os: newDevice.os, browser: newDevice.browser, macAddress: newDevice.macAddress } });
   } catch (error) {
-    console.error('❌ Device check error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check device',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to check device.' });
   }
 });
-// ==================== SESSION MANAGEMENT ROUTES ====================
 
-// Refresh session
+// ==================== SESSION MANAGEMENT ====================
 app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      message: 'Session refreshed',
-      expiresAt: req.session.expiresAt
-    });
-  } catch (error) {
-    console.error('❌ Session refresh error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh session'
-    });
-  }
+  res.json({ success: true, message: 'Session refreshed', expiresAt: req.session.expiresAt });
 });
 
-// Logout
 app.post('/api/auth/logout', authMiddleware, async (req, res) => {
-  try {
-    req.session.isActive = false;
-    req.session.logoutReason = 'manual';
-    await req.session.save();
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-  } catch (error) {
-    console.error('❌ Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to logout'
-    });
-  }
+  req.session.isActive = false;
+  req.session.logoutReason = 'manual';
+  await req.session.save();
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// Get active sessions
-app.get('/api/auth/sessions', authMiddleware, async (req, res) => {
-  try {
-    const sessions = await Session.find({
-      userId: req.user._id,
-      isActive: true
-    }).populate('deviceId');
-
-    res.json({
-      success: true,
-      data: sessions.map(s => ({
-        id: s._id,
-        device: s.deviceId,
-        lastActivity: s.lastActivity,
-        expiresAt: s.expiresAt,
-        isCurrent: s._id.toString() === req.session._id.toString()
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Error fetching sessions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch sessions'
-    });
-  }
-});
-
-// Get user's devices
-app.get('/api/auth/devices', authMiddleware, async (req, res) => {
-  try {
-    const devices = await Device.find({
-      userId: req.user._id,
-      isActive: true
-    }).sort({ lastLogin: -1 });
-
-    res.json({
-      success: true,
-      data: devices.map(d => ({
-        id: d._id,
-        deviceName: d.deviceName,
-        deviceType: d.deviceType,
-        os: d.os,
-        browser: d.browser,
-        macAddress: d.macAddress,
-        ipAddress: d.ipAddress,
-        isVerified: d.isVerified,
-        lastLogin: d.lastLogin,
-        firstLogin: d.firstLogin,
-        loginCount: d.loginCount,
-        isCurrent: d._id.toString() === req.deviceId?.toString()
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Error fetching devices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch devices'
-    });
-  }
-});
-
-// Revoke device access
-app.delete('/api/auth/devices/:deviceId', authMiddleware, async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-
-    const device = await Device.findOne({
-      _id: deviceId,
-      userId: req.user._id
-    });
-
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        message: 'Device not found'
-      });
-    }
-
-    if (device._id.toString() === req.deviceId?.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot revoke access for current device'
-      });
-    }
-
-    device.isActive = false;
-    await device.save();
-
-    await Session.updateMany(
-      { deviceId: device._id, isActive: true },
-      { isActive: false, logoutReason: 'admin_terminated' }
-    );
-
-    res.json({
-      success: true,
-      message: 'Device access revoked successfully'
-    });
-  } catch (error) {
-    console.error('❌ Error revoking device:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to revoke device access'
-    });
-  }
-});
-
-// ==================== ADMIN DEVICE VERIFICATION ROUTES ====================
-
-// Get pending verification requests
+// ==================== ADMIN DEVICE VERIFICATION ====================
 app.get('/api/admin/verification-requests', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Admin access required'
-      });
-    }
-
-    const requests = await VerificationRequest.find({ status: 'pending' })
-      .populate('userId', 'name email role')
-      .populate('deviceId')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      data: requests.map(req => ({
-        id: req._id,
-        user: req.userId,
-        device: req.deviceId,
-        requestToken: req.requestToken,
-        createdAt: req.createdAt,
-        expiresAt: req.expiresAt,
-        ipAddress: req.ipAddress,
-        userAgent: req.userAgent
-      }))
-    });
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Admin access required' });
+    const requests = await VerificationRequest.find({ status: 'pending' }).populate('userId', 'name email role').populate('deviceId').sort({ createdAt: -1 });
+    res.json({ success: true, data: requests });
   } catch (error) {
-    console.error('❌ Error fetching verification requests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch verification requests'
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch verification requests' });
   }
 });
 
-// Approve or reject device verification
 app.post('/api/admin/verify-device', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Admin access required'
-      });
-    }
-
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Admin access required' });
     const { requestId, action, rejectionReason } = req.body;
+    if (!['approve', 'reject'].includes(action)) return res.status(400).json({ success: false, message: 'Invalid action' });
 
-    if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid action. Must be "approve" or "reject"'
-      });
-    }
-
-    const verificationRequest = await VerificationRequest.findById(requestId)
-      .populate('userId')
-      .populate('deviceId');
-
-    if (!verificationRequest) {
-      return res.status(404).json({
-        success: false,
-        message: 'Verification request not found'
-      });
-    }
-
-    if (verificationRequest.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: `Request already ${verificationRequest.status}`
-      });
-    }
-
-    if (new Date() > verificationRequest.expiresAt) {
-      verificationRequest.status = 'expired';
-      await verificationRequest.save();
-      return res.status(400).json({
-        success: false,
-        message: 'Verification request has expired'
-      });
-    }
+    const verificationRequest = await VerificationRequest.findById(requestId).populate('userId').populate('deviceId');
+    if (!verificationRequest) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (verificationRequest.status !== 'pending') return res.status(400).json({ success: false, message: `Request already ${verificationRequest.status}` });
 
     if (action === 'approve') {
       verificationRequest.status = 'approved';
       verificationRequest.approvedBy = req.user._id;
       verificationRequest.approvedAt = new Date();
-
-      await Device.findByIdAndUpdate(verificationRequest.deviceId, {
-        isVerified: true
-      });
-
+      await Device.findByIdAndUpdate(verificationRequest.deviceId, { isVerified: true });
       await sendDeviceApprovedEmail(verificationRequest.userId, verificationRequest.deviceId);
-
     } else {
       verificationRequest.status = 'rejected';
       verificationRequest.approvedBy = req.user._id;
       verificationRequest.approvedAt = new Date();
       verificationRequest.rejectionReason = rejectionReason || 'No reason provided';
-
       await sendDeviceRejectedEmail(verificationRequest.userId, verificationRequest.deviceId, rejectionReason);
     }
-
     await verificationRequest.save();
 
-    res.json({
-      success: true,
-      message: `Device ${action}d successfully`,
-      data: verificationRequest
-    });
-
+    res.json({ success: true, message: `Device ${action}d successfully`, data: verificationRequest });
   } catch (error) {
-    console.error('❌ Error verifying device:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to verify device',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to verify device' });
   }
 });
 
 // ==================== PRODUCT ROUTES ====================
-
 app.get('/api/products', async (req, res) => {
   try {
-    console.log('📦 Fetching products...');
-
-    if (!models.Product) {
-      console.log('⚠️ Product model not found, initializing...');
-      models = createModels();
-    }
-
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location type')
-      .sort({ createdAt: -1 });
-
-    console.log(`✅ Found ${products.length} products`);
-
-    res.json({
-      success: true,
-      data: products,
-      count: products.length
-    });
+    if (!models.Product) models = createModels();
+    const products = await models.Product.find({ isActive: true }).populate('shop', 'name location type').sort({ createdAt: -1 });
+    res.json({ success: true, data: products, count: products.length });
   } catch (error) {
-    console.error('❌ Error fetching products:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch products',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch products', error: error.message });
   }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
     const productData = req.body;
-
     if (productData.shop) {
       const shop = await models.Shop.findById(productData.shop);
-      if (shop) {
-        productData.shopName = shop.name;
-        productData.shopId = shop._id;
-      }
+      if (shop) { productData.shopName = shop.name; productData.shopId = shop._id; }
     }
-
     const product = new models.Product(productData);
     await product.save();
     await product.populate('shop', 'name location type');
-
-    res.status(201).json({
-      success: true,
-      data: product,
-      message: 'Product created successfully'
-    });
+    res.status(201).json({ success: true, data: product, message: 'Product created successfully' });
   } catch (error) {
-    console.error('Error creating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create product',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create product', error: error.message });
   }
 });
 
@@ -3275,417 +1655,217 @@ app.put('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-
     const oldProduct = await models.Product.findById(id);
-    const product = await models.Product.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shop', 'name location type');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
+    const product = await models.Product.findByIdAndUpdate(id, { ...updateData, updatedAt: new Date() }, { new: true, runValidators: true }).populate('shop', 'name location type');
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
 
     const oldStock = oldProduct?.currentStock || 0;
     const newStock = product.currentStock || 0;
     const minStock = product.minStockLevel || 5;
-
     if (newStock === 0 || (oldStock > minStock && newStock <= minStock)) {
       const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
-
       const now = new Date();
       const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-      const lastAlert = product.lastStockAlertSent;
-
-      if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
-        await sendStockAlertEmail([{
-          ...product.toObject(),
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        }], alertType);
-
+      if (!product.lastStockAlertSent || new Date(product.lastStockAlertSent) < sixHoursAgo) {
+        await sendStockAlertEmail([{ ...product.toObject(), shopName: product.shop?.name || product.shopName || 'Unknown Shop' }], alertType);
         product.lastStockAlertSent = now;
         await product.save();
       }
     }
-
-    res.json({
-      success: true,
-      data: product,
-      message: 'Product updated successfully'
-    });
+    res.json({ success: true, data: product, message: 'Product updated successfully' });
   } catch (error) {
-    console.error('Error updating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update product',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to update product', error: error.message });
   }
 });
 
 app.delete('/api/products/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const product = await models.Product.findByIdAndDelete(id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
+    const product = await models.Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+    res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
-    console.error('Error deleting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete product',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to delete product', error: error.message });
   }
 });
 
 // ==================== SHOP ROUTES ====================
-
 app.get('/api/shops', async (req, res) => {
   try {
-    console.log('🏪 Fetching shops...');
-
-    if (!models.Shop) {
-      console.log('⚠️ Shop model not found, initializing...');
-      models = createModels();
-    }
-
+    if (!models.Shop) models = createModels();
     const shops = await models.Shop.find().sort({ createdAt: -1 });
-    console.log(`✅ Found ${shops.length} shops`);
-
-    res.json({
-      success: true,
-      data: shops,
-      count: shops.length
-    });
+    res.json({ success: true, data: shops, count: shops.length });
   } catch (error) {
-    console.error('❌ Error fetching shops:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch shops',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch shops', error: error.message });
   }
 });
 
 app.post('/api/shops', async (req, res) => {
   try {
-    const shopData = req.body;
-    const shop = new models.Shop(shopData);
+    const shop = new models.Shop(req.body);
     await shop.save();
-
-    res.status(201).json({
-      success: true,
-      data: shop,
-      message: 'Shop created successfully'
-    });
+    res.status(201).json({ success: true, data: shop, message: 'Shop created successfully' });
   } catch (error) {
-    console.error('Error creating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create shop',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create shop', error: error.message });
   }
 });
 
 app.put('/api/shops/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const shop = await models.Shop.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    );
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: shop,
-      message: 'Shop updated successfully'
-    });
+    const shop = await models.Shop.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true, runValidators: true });
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    res.json({ success: true, data: shop, message: 'Shop updated successfully' });
   } catch (error) {
-    console.error('Error updating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update shop',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to update shop', error: error.message });
   }
 });
 
 app.delete('/api/shops/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const shop = await models.Shop.findByIdAndDelete(id);
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Shop deleted successfully'
-    });
+    const shop = await models.Shop.findByIdAndDelete(req.params.id);
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    res.json({ success: true, message: 'Shop deleted successfully' });
   } catch (error) {
-    console.error('Error deleting shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete shop',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to delete shop', error: error.message });
   }
 });
 
 // ==================== CASHIER ROUTES ====================
-
 app.get('/api/cashiers', async (req, res) => {
   try {
-    const cashiers = await models.Cashier.find()
-      .populate('shopId', 'name location')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      data: cashiers,
-      count: cashiers.length
-    });
+    const cashiers = await models.Cashier.find().populate('shopId', 'name location').sort({ createdAt: -1 });
+    res.json({ success: true, data: cashiers, count: cashiers.length });
   } catch (error) {
-    console.error('Error fetching cashiers:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch cashiers',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch cashiers', error: error.message });
   }
 });
 
 app.post('/api/cashiers', async (req, res) => {
   try {
     const cashierData = req.body;
-
-    if (cashierData.password) {
-      cashierData.password = await bcrypt.hash(cashierData.password, 10);
-    }
-
+    if (cashierData.password) cashierData.password = await bcrypt.hash(cashierData.password, 10);
     const cashier = new models.Cashier(cashierData);
     await cashier.save();
     await cashier.populate('shopId', 'name location');
-
-    res.status(201).json({
-      success: true,
-      data: cashier,
-      message: 'Cashier created successfully'
-    });
+    res.status(201).json({ success: true, data: cashier, message: 'Cashier created successfully' });
   } catch (error) {
-    console.error('Error creating cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create cashier',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create cashier', error: error.message });
   }
 });
 
 app.put('/api/cashiers/:id', async (req, res) => {
   try {
-    const { id } = req.params;
     const updateData = req.body;
-
-    const existingCashier = await models.Cashier.findById(id);
-    if (!existingCashier) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cashier not found'
-      });
-    }
-
-    if (updateData.password && updateData.password.trim() !== '') {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    } else {
-      delete updateData.password;
-    }
-
-    const cashier = await models.Cashier.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shopId', 'name location');
-
-    res.json({
-      success: true,
-      data: cashier,
-      message: 'Cashier updated successfully'
-    });
+    if (updateData.password && updateData.password.trim() !== '') updateData.password = await bcrypt.hash(updateData.password, 10);
+    else delete updateData.password;
+    const cashier = await models.Cashier.findByIdAndUpdate(req.params.id, { ...updateData, updatedAt: new Date() }, { new: true, runValidators: true }).populate('shopId', 'name location');
+    if (!cashier) return res.status(404).json({ success: false, message: 'Cashier not found' });
+    res.json({ success: true, data: cashier, message: 'Cashier updated successfully' });
   } catch (error) {
-    console.error('❌ Error updating cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update cashier',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to update cashier', error: error.message });
   }
 });
 
 app.delete('/api/cashiers/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const cashier = await models.Cashier.findByIdAndDelete(id);
-
-    if (!cashier) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cashier not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Cashier deleted successfully'
-    });
+    const cashier = await models.Cashier.findByIdAndDelete(req.params.id);
+    if (!cashier) return res.status(404).json({ success: false, message: 'Cashier not found' });
+    res.json({ success: true, message: 'Cashier deleted successfully' });
   } catch (error) {
-    console.error('Error deleting cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete cashier',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to delete cashier', error: error.message });
   }
 });
 
 // ==================== EXPENSE ROUTES ====================
-
 app.get('/api/expenses', async (req, res) => {
   try {
-    const expenses = await models.Expense.find()
-      .populate('shop', 'name location')
-      .sort({ date: -1 });
-
-    res.json({
-      success: true,
-      data: expenses,
-      count: expenses.length
-    });
+    const { startDate, endDate, shopId, category } = req.query;
+    let filter = {};
+    if (startDate && endDate) filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    if (category && category !== 'all') filter.category = category;
+    const expenses = await models.Expense.find(filter).populate('shop', 'name location').sort({ date: -1 }).lean();
+    res.json({ success: true, data: expenses, count: expenses.length, summary: { totalExpenses: expenses.length, totalAmount: expenses.reduce((sum, e) => sum + (e.amount || 0), 0), averageExpense: expenses.length > 0 ? expenses.reduce((sum, e) => sum + (e.amount || 0), 0) / expenses.length : 0 } });
   } catch (error) {
-    console.error('Error fetching expenses:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch expenses',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch expenses', error: error.message });
+  }
+});
+
+app.get('/api/expenses/stats', async (req, res) => {
+  try {
+    const { startDate, endDate, shopId } = req.query;
+    let filter = {};
+    if (startDate && endDate) filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    const [expenses, byCategory, byPaymentMethod] = await Promise.all([
+      models.Expense.find(filter).lean(),
+      models.Expense.aggregate([{ $match: filter }, { $group: { _id: '$category', count: { $sum: 1 }, total: { $sum: '$amount' } } }, { $sort: { total: -1 } }]),
+      models.Expense.aggregate([{ $match: filter }, { $group: { _id: '$paymentMethod', count: { $sum: 1 }, total: { $sum: '$amount' } } }])
+    ]);
+    res.json({ success: true, data: { overview: { totalExpenses: expenses.length, totalAmount: expenses.reduce((sum, e) => sum + (e.amount || 0), 0), averageExpense: expenses.length > 0 ? expenses.reduce((sum, e) => sum + (e.amount || 0), 0) / expenses.length : 0 }, byCategory, byPaymentMethod } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch expense statistics', error: error.message });
   }
 });
 
 app.post('/api/expenses', async (req, res) => {
   try {
     const expenseData = req.body;
-
     if (expenseData.shop) {
       const shop = await models.Shop.findById(expenseData.shop);
-      if (shop) {
-        expenseData.shopName = shop.name;
-        expenseData.shopId = shop._id.toString();
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Selected shop not found'
-        });
-      }
-    } else {
-      expenseData.shopName = 'No Shop Assigned';
-    }
-
+      if (shop) { expenseData.shopName = shop.name; expenseData.shopId = shop._id.toString(); }
+      else return res.status(400).json({ success: false, message: 'Selected shop not found' });
+    } else expenseData.shopName = 'No Shop Assigned';
     const expense = new models.Expense(expenseData);
     await expense.save();
     await expense.populate('shop', 'name location');
-
-    res.status(201).json({
-      success: true,
-      data: expense,
-      message: 'Expense created successfully'
-    });
+    res.status(201).json({ success: true, data: expense, message: 'Expense created successfully' });
   } catch (error) {
-    console.error('❌ Error creating expense:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create expense',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create expense', error: error.message });
   }
 });
 
 app.delete('/api/expenses/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const expense = await models.Expense.findByIdAndDelete(id);
-
-    if (!expense) {
-      return res.status(404).json({
-        success: false,
-        message: 'Expense not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Expense deleted successfully'
-    });
+    const expense = await models.Expense.findByIdAndDelete(req.params.id);
+    if (!expense) return res.status(404).json({ success: false, message: 'Expense not found' });
+    res.json({ success: true, message: 'Expense deleted successfully' });
   } catch (error) {
-    console.error('Error deleting expense:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete expense',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to delete expense', error: error.message });
   }
 });
 
 // ==================== CREDIT ROUTES ====================
+app.get('/api/credits', async (req, res) => {
+  try {
+    const { shopId, status, cashierId, startDate, endDate } = req.query;
+    let filter = {};
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }, { creditShopId: shopId }];
+    if (status && status !== 'all') filter.status = status;
+    if (cashierId && cashierId !== 'all') filter.cashierId = cashierId;
+    if (startDate && endDate) filter.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    const credits = await models.Credit.find(filter).populate('transactionId').populate('shop', 'name location type').populate('cashierId', 'name email').sort({ dueDate: 1 }).lean();
+    res.json({ success: true, data: credits, count: credits.length, summary: { totalCredits: credits.length, totalCreditAmount: credits.reduce((sum, c) => sum + (c.totalAmount || 0), 0), totalPaid: credits.reduce((sum, c) => sum + (c.amountPaid || 0), 0), totalOutstanding: credits.reduce((sum, c) => sum + (c.balanceDue || 0), 0), overdueCount: credits.filter(c => c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0).length, totalUpfrontPayments: credits.reduce((sum, c) => sum + (c.upfrontPaymentAmount || 0), 0), totalImmediateRevenue: credits.reduce((sum, c) => sum + (c.immediateRevenue || 0), 0) } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch credits', error: error.message });
+  }
+});
+
+app.get('/api/credits/:id/payments', async (req, res) => {
+  try {
+    const credit = await models.Credit.findById(req.params.id);
+    if (!credit) return res.status(404).json({ success: false, message: 'Credit not found' });
+    res.json({ success: true, data: credit.paymentHistory || [] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch payment history', error: error.message });
+  }
+});
 
 app.post('/api/credits', async (req, res) => {
   try {
     const creditData = req.body;
-
     if (creditData.transactionId) {
-      const existingCredit = await models.Credit.findOne({
-        transactionId: creditData.transactionId
-      });
-
-      if (existingCredit) {
-        return res.status(409).json({
-          success: false,
-          message: 'Credit record already exists for this transaction',
-          data: existingCredit
-        });
-      }
-    }
-
-    if (creditData.transactionId) {
+      const existingCredit = await models.Credit.findOne({ transactionId: creditData.transactionId });
+      if (existingCredit) return res.status(409).json({ success: false, message: 'Credit already exists', data: existingCredit });
       const transaction = await models.Transaction.findById(creditData.transactionId);
       if (transaction) {
         if (!creditData.shop) creditData.shop = transaction.shop;
@@ -3695,364 +1875,257 @@ app.post('/api/credits', async (req, res) => {
         if (!creditData.cashierName) creditData.cashierName = transaction.cashierName;
         if (!creditData.upfrontPaymentAmount) creditData.upfrontPaymentAmount = transaction.upfrontPaymentAmount;
         if (!creditData.upfrontPaymentMethod) creditData.upfrontPaymentMethod = transaction.upfrontPaymentMethod;
-        if (!creditData.upfrontPaymentSplit) creditData.upfrontPaymentSplit = transaction.upfrontPaymentSplit;
         if (!creditData.immediateRevenue) creditData.immediateRevenue = transaction.immediateRevenue;
       }
     }
-
-    if (!creditData.status) {
-      creditData.status = creditData.balanceDue > 0 ? 'pending' : 'paid';
-    }
-
-    if (!creditData.dueDate) {
-      creditData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
-
+    if (!creditData.status) creditData.status = creditData.balanceDue > 0 ? 'pending' : 'paid';
+    if (!creditData.dueDate) creditData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     if (!creditData.paymentHistory && creditData.amountPaid > 0) {
-      creditData.paymentHistory = [{
-        amount: creditData.amountPaid,
-        paymentDate: new Date(),
-        paymentMethod: creditData.upfrontPaymentMethod || 'initial',
-        recordedBy: creditData.recordedBy || 'System',
-        cashierName: creditData.cashierName,
-        notes: 'Initial upfront payment'
-      }];
+      creditData.paymentHistory = [{ amount: creditData.amountPaid, paymentDate: new Date(), paymentMethod: creditData.upfrontPaymentMethod || 'initial', recordedBy: creditData.recordedBy || 'System', cashierName: creditData.cashierName, notes: 'Initial upfront payment' }];
     }
-
     const credit = new models.Credit(creditData);
     await credit.save();
-
     await credit.populate('transactionId');
     await credit.populate('shop', 'name location type');
     await credit.populate('cashierId', 'name email');
-
-    res.status(201).json({
-      success: true,
-      data: credit,
-      message: 'Credit record created successfully'
-    });
+    res.status(201).json({ success: true, data: credit, message: 'Credit record created successfully' });
   } catch (error) {
-    console.error('❌ Error creating credit record:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create credit record',
-      error: error.message
-    });
-  }
-});
-
-app.get('/api/credits', async (req, res) => {
-  try {
-    const { shopId, status, cashierId, startDate, endDate } = req.query;
-
-    let filter = {};
-    if (shopId && shopId !== 'all') {
-      filter.$or = [
-        { shop: shopId },
-        { shopId: shopId },
-        { creditShopId: shopId }
-      ];
-    }
-    if (status && status !== 'all') filter.status = status;
-    if (cashierId && cashierId !== 'all') {
-      filter.$or = [
-        { cashierId: cashierId },
-        { cashierName: { $regex: cashierId, $options: 'i' } }
-      ];
-    }
-
-    if (startDate && endDate) {
-      filter.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    const credits = await models.Credit.find(filter)
-      .populate('transactionId')
-      .populate('shop', 'name location type')
-      .populate('cashierId', 'name email')
-      .sort({ dueDate: 1 });
-
-    res.json({
-      success: true,
-      data: credits,
-      count: credits.length,
-      summary: {
-        totalCredits: credits.length,
-        totalCreditAmount: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.totalAmount), 0),
-        totalPaid: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.amountPaid), 0),
-        totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0),
-        overdueCount: credits.filter(c =>
-          c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0
-        ).length,
-        totalUpfrontPayments: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.upfrontPaymentAmount), 0),
-        totalImmediateRevenue: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.immediateRevenue), 0)
-      },
-      creditDisplayLogic: 'balance_due_only',
-      upfrontPaymentTracking: 'enhanced'
-    });
-  } catch (error) {
-    console.error('Error fetching credits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch credits',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create credit record', error: error.message });
   }
 });
 
 // ==================== TRANSACTION ROUTES ====================
-
+// Combined transactions endpoint (main one used by frontend)
 app.get('/api/transactions/combined', async (req, res) => {
   try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod,
-      dataType = 'all'
-    } = req.query;
+    const { startDate, endDate, shopId, cashierId, paymentMethod, dataType = 'all' } = req.query;
+    console.log('🚀 Fetching combined transactions:', { startDate, endDate, shopId, cashierId, paymentMethod });
 
-    console.log('🚀 Processing enhanced combined transaction endpoint...', req.query);
+    let filter = {};
+    if (startDate && endDate) filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    if (cashierId && cashierId !== 'all') filter.cashierId = cashierId;
+    if (paymentMethod && paymentMethod !== 'all') filter.paymentMethod = paymentMethod;
 
-    const startTime = Date.now();
+    const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
+      models.Transaction.find(filter).populate('shop', 'name location type').populate('cashierId', 'name email').populate('items.productId', 'name buyingPrice').sort({ saleDate: -1 }).lean(),
+      models.Shop.find().lean(),
+      models.Cashier.find().select('-password').lean(),
+      models.Product.find().lean(),
+      models.Expense.find().lean(),
+      models.Credit.find().lean()
+    ]);
 
-    const filters = {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-    const processingTime = Date.now() - startTime;
-
-    let responseData = {
-      success: true,
-      data: transactionData,
-      processingTime,
-      message: 'Combined transaction data fetched successfully',
-      cogsMethodology: 'prorated_based_on_payment',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only',
-      upfrontPaymentTracking: 'enhanced'
-    };
-
-    if (dataType !== 'all') {
-      switch (dataType) {
-        case 'basic':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.summary
-          };
-          break;
-        case 'enhanced':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.financialStats,
-            credits: transactionData.credits
-          };
-          break;
-        case 'sales':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.summary,
-            performance: transactionData.performance
-          };
-          break;
-        case 'withCredits':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            credits: transactionData.credits,
-            summary: {
-              ...transactionData.summary,
-              creditSummary: {
-                totalCredits: transactionData.credits.length,
-                totalCreditAmount: transactionData.summary.totalCreditGiven,
-                outstandingCredit: transactionData.summary.outstandingCredit,
-                recognizedCreditRevenue: transactionData.summary.recognizedCreditRevenue,
-                immediateRevenue: transactionData.summary.immediateRevenue
-              }
-            }
-          };
-          break;
-        case 'optimized':
-          responseData.data = {
-            comprehensiveReport: transactionData.comprehensiveReport,
-            salesSummary: {
-              financialStats: transactionData.financialStats,
-              topProducts: transactionData.performance.topProducts,
-              topCashiers: transactionData.performance.topCashiers
-            },
-            enhancedStats: transactionData.enhancedStats,
-            filteredTransactions: transactionData.salesWithProfit
-          };
-          break;
-        case 'metrics-only':
-          responseData.data = {
-            metrics: transactionData.financialStats,
-            period: {
-              startDate: startDate || 'All time',
-              endDate: endDate || 'All time'
-            }
-          };
-          break;
-      }
-    }
-
-    res.json(responseData);
-  } catch (error) {
-    console.error('❌ Error in enhanced combined transaction endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch combined transaction data',
-      error: error.message,
-      processingTime: 0
+    const salesWithProfit = transactions.map(t => {
+      const totalCost = t.cost || 0;
+      const totalProfit = t.profit || (t.totalAmount - totalCost);
+      return {
+        ...t, totalCost, totalProfit,
+        profitMargin: t.profitMargin || (t.totalAmount > 0 ? (totalProfit / t.totalAmount) * 100 : 0),
+        cost: totalCost, profit: totalProfit,
+        saleDate: t.saleDate || t.createdAt,
+        itemsCount: t.itemsCount || t.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 0,
+        items: (t.items || []).map(item => {
+          const itemCost = (item.buyingPrice || 0) * (item.quantity || 1);
+          const itemProfit = item.profit || (item.totalPrice - itemCost);
+          return { ...item, productName: item.productName || 'Unknown Product', quantity: item.quantity || 1, price: item.price || 0, totalPrice: item.totalPrice || 0, cost: itemCost, profit: itemProfit, profitMargin: item.totalPrice > 0 ? (itemProfit / item.totalPrice) * 100 : 0 };
+        })
+      };
     });
-  }
-});
 
-app.get('/api/transactions/metrics', async (req, res) => {
-  try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId
-    } = req.query;
+    const totalRevenue = salesWithProfit.reduce((sum, t) => sum + (t.recognizedRevenue || t.totalAmount || 0), 0);
+    const totalCost = salesWithProfit.reduce((sum, t) => sum + (t.cost || 0), 0);
+    const totalProfit = totalRevenue - totalCost;
+    const creditTransactions = salesWithProfit.filter(t => t.isCreditTransaction);
+    const nonCreditTransactions = salesWithProfit.filter(t => !t.isCreditTransaction);
+    const creditSales = creditTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+    const outstandingCredit = credits.filter(c => c.status !== 'paid').reduce((sum, c) => sum + (c.balanceDue || 0), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    const filters = {
-      startDate,
-      endDate,
-      shopId,
-      cashierId
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-
-    const metrics = {
-      totalSales: {
-        amount: transactionData.financialStats.totalRevenue,
-        count: transactionData.financialStats.totalSales,
-        description: `${transactionData.financialStats.totalSales} transactions`
-      },
-      creditSales: {
-        amount: transactionData.financialStats.creditSales,
-        count: transactionData.financialStats.creditSalesCount,
-        description: `${transactionData.financialStats.creditSalesCount} credit transactions`
-      },
-      nonCreditSales: {
-        amount: transactionData.financialStats.nonCreditSales,
-        count: transactionData.financialStats.nonCreditSalesCount,
-        description: `${transactionData.financialStats.nonCreditSalesCount} complete transactions`
-      },
-      totalRevenue: {
-        amount: transactionData.financialStats.totalRevenue,
-        description: 'From credit & non-credit sales'
-      },
-      expenses: {
-        amount: transactionData.financialStats.totalExpenses,
-        description: 'Total operational costs'
-      },
-      grossProfit: {
-        amount: transactionData.financialStats.grossProfit,
-        description: 'Revenue - Cost of Goods'
-      },
-      netProfit: {
-        amount: transactionData.financialStats.netProfit,
-        description: 'After all expenses'
-      },
-      costOfGoodsSold: {
-        amount: transactionData.financialStats.costOfGoodsSold,
-        description: 'For credit & non-credit sales'
-      },
-      totalMpesaBank: {
-        amount: transactionData.financialStats.totalMpesaBank,
-        description: 'Digital payments'
-      },
-      totalCash: {
-        amount: transactionData.financialStats.totalCash,
-        description: 'Cash payments'
-      },
-      outstandingCredit: {
-        amount: transactionData.financialStats.outstandingCredit,
-        description: 'Unpaid credit balance'
-      },
-      totalCreditGiven: {
-        amount: transactionData.financialStats.totalCreditGiven,
-        description: 'Total credit extended'
+    let totalCash = 0, totalMpesaBank = 0;
+    salesWithProfit.forEach(t => {
+      if (t.paymentSplit) { totalCash += t.paymentSplit.cash || 0; totalMpesaBank += t.paymentSplit.bank_mpesa || 0; }
+      else {
+        if (t.paymentMethod === 'cash') totalCash += t.amountPaid || t.totalAmount || 0;
+        else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) totalMpesaBank += t.amountPaid || t.totalAmount || 0;
       }
+    });
+
+    const financialStats = {
+      totalSales: salesWithProfit.length,
+      creditSales,
+      nonCreditSales: nonCreditTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+      totalRevenue,
+      totalExpenses,
+      grossProfit: totalProfit,
+      netProfit: totalProfit - totalExpenses,
+      costOfGoodsSold: totalCost,
+      totalMpesaBank,
+      totalCash,
+      outstandingCredit,
+      totalCreditGiven: creditSales,
+      creditSalesCount: creditTransactions.length,
+      nonCreditSalesCount: nonCreditTransactions.length,
+      completeTransactionsCount: nonCreditTransactions.length,
+      totalItemsSold: salesWithProfit.reduce((sum, t) => sum + (t.itemsCount || 0), 0),
+      profitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
+      creditCollectionRate: creditSales > 0 ? ((creditSales - outstandingCredit) / creditSales) * 100 : 0,
+      _calculatedAt: new Date().toISOString()
     };
 
-    res.json({
-      success: true,
-      data: metrics,
-      period: {
-        startDate: startDate || 'All time',
-        endDate: endDate || 'All time'
-      },
-      message: 'Transaction metrics fetched successfully',
+    const productMap = {};
+    salesWithProfit.forEach(t => {
+      t.items?.forEach(item => {
+        const productId = item.productId?._id || item.productId;
+        const key = productId ? productId.toString() : item.productName;
+        if (!productMap[key]) productMap[key] = { id: productId, name: item.productName, totalSold: 0, totalRevenue: 0, totalProfit: 0 };
+        const quantity = item.quantity || 1;
+        const revenue = item.totalPrice || 0;
+        productMap[key].totalSold += quantity;
+        productMap[key].totalRevenue += revenue;
+        productMap[key].totalProfit += revenue - ((item.buyingPrice || 0) * quantity);
+      });
+    });
+    const topProducts = Object.values(productMap).sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 10);
+
+    const responseData = {
+      salesWithProfit, financialStats, salesPerformanceSummary: financialStats,
+      expenses, credits, products, shops, cashiers,
+      performance: { topProducts },
+      summary: financialStats,
+      enhancedStats: { salesWithProfit, financialStats },
+      comprehensiveReport: { summary: financialStats, transactions: salesWithProfit, expenses, products, credits, shops, cashiers, performance: { topProducts } },
+      timestamp: new Date().toISOString(),
       cogsCalculation: 'prorated_based_on_payment',
       creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only',
-      upfrontPaymentTracking: 'enhanced'
-    });
+      immediateRevenueTracking: 'enabled'
+    };
+
+    if (dataType === 'basic') return res.json({ success: true, data: { transactions: salesWithProfit, summary: financialStats }, processingTime: 0 });
+    if (dataType === 'withCredits') return res.json({ success: true, data: { transactions: salesWithProfit, credits, summary: { ...financialStats, creditSummary: { totalCredits: credits.length, totalCreditAmount: creditSales, outstandingCredit, recognizedCreditRevenue: creditSales - outstandingCredit, immediateRevenue: totalRevenue } } }, processingTime: 0 });
+    if (dataType === 'enhanced') return res.json({ success: true, data: { transactions: salesWithProfit, summary: financialStats, credits }, processingTime: 0 });
+
+    res.json({ success: true, data: responseData, processingTime: 0, message: 'Combined transaction data fetched successfully' });
   } catch (error) {
-    console.error('❌ Error fetching transaction metrics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch transaction metrics',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch combined transaction data', error: error.message });
   }
 });
 
-// ==================== TRANSACTION CREATION ROUTE ====================
+// Transaction metrics endpoint
+app.get('/api/transactions/metrics', async (req, res) => {
+  try {
+    const { startDate, endDate, shopId, cashierId } = req.query;
+    let filter = {};
+    if (startDate && endDate) filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    if (cashierId && cashierId !== 'all') filter.cashierId = cashierId;
 
+    const [transactions, expenses, credits] = await Promise.all([
+      models.Transaction.find(filter).lean(),
+      models.Expense.find().lean(),
+      models.Credit.find().lean()
+    ]);
+
+    const totalTransactions = transactions.length;
+    const totalRevenue = transactions.reduce((sum, t) => sum + (t.recognizedRevenue || t.totalAmount || 0), 0);
+    const creditTransactions = transactions.filter(t => t.isCreditTransaction);
+    const nonCreditTransactions = transactions.filter(t => !t.isCreditTransaction);
+    const creditSales = creditTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+    const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+
+    let totalCash = 0, totalMpesaBank = 0;
+    transactions.forEach(t => {
+      if (t.paymentSplit) { totalCash += t.paymentSplit.cash || 0; totalMpesaBank += t.paymentSplit.bank_mpesa || 0; }
+      else {
+        if (t.paymentMethod === 'cash') totalCash += t.immediateRevenue || t.amountPaid || t.totalAmount || 0;
+        else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) totalMpesaBank += t.immediateRevenue || t.amountPaid || t.totalAmount || 0;
+      }
+    });
+
+    const totalCost = transactions.reduce((sum, t) => sum + (t.cost || 0), 0);
+    const grossProfit = totalRevenue - totalCost;
+    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const netProfit = grossProfit - totalExpenses;
+    const outstandingCredit = credits.filter(c => c.status !== 'paid').reduce((sum, c) => sum + (c.balanceDue || 0), 0);
+
+    const metrics = {
+      totalSales: { amount: totalRevenue, count: totalTransactions, description: `${totalTransactions} transactions` },
+      creditSales: { amount: creditSales, count: creditTransactions.length, description: `${creditTransactions.length} credit transactions` },
+      nonCreditSales: { amount: nonCreditSales, count: nonCreditTransactions.length, description: `${nonCreditTransactions.length} complete transactions` },
+      totalRevenue: { amount: totalRevenue, description: 'From credit & non-credit sales' },
+      expenses: { amount: totalExpenses, description: 'Total operational costs' },
+      grossProfit: { amount: grossProfit, description: 'Revenue - Cost of Goods' },
+      netProfit: { amount: netProfit, description: 'After all expenses' },
+      costOfGoodsSold: { amount: totalCost, description: 'For credit & non-credit sales' },
+      totalMpesaBank: { amount: totalMpesaBank, description: 'Digital payments' },
+      totalCash: { amount: totalCash, description: 'Cash payments' },
+      outstandingCredit: { amount: outstandingCredit, description: 'Unpaid credit balance' },
+      totalCreditGiven: { amount: creditSales, description: 'Total credit extended' }
+    };
+
+    res.json({ success: true, data: metrics, period: { startDate: startDate || 'All time', endDate: endDate || 'All time' }, message: 'Transaction metrics fetched successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch transaction metrics', error: error.message });
+  }
+});
+
+// Get all transactions
+app.get('/api/transactions', async (req, res) => {
+  try {
+    const { startDate, endDate, shopId, cashierName, paymentMethod, status, page = 1, limit = 50 } = req.query;
+    let filter = {};
+    if (startDate && endDate) filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    if (shopId && shopId !== 'all') filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    if (cashierName) filter.cashierName = { $regex: cashierName, $options: 'i' };
+    if (paymentMethod && paymentMethod !== 'all') filter.paymentMethod = paymentMethod;
+    if (status && status !== 'all') filter.status = status;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [transactions, total] = await Promise.all([
+      models.Transaction.find(filter).populate('shop', 'name location').populate('cashierId', 'name email').populate('items.productId', 'name buyingPrice').sort({ saleDate: -1 }).skip(skip).limit(limitNum).lean(),
+      models.Transaction.countDocuments(filter)
+    ]);
+
+    const enhancedTransactions = transactions.map(t => ({
+      ...t,
+      transactionNumber: t.transactionNumber || t._id.toString().substring(0, 8),
+      cashierName: t.cashierName || 'Unknown Cashier',
+      customerName: t.customerName || 'Walk-in Customer',
+      totalCost: t.cost || 0,
+      totalProfit: t.profit || (t.totalAmount - (t.cost || 0)),
+      profitMargin: t.profitMargin || (t.totalAmount > 0 ? ((t.totalAmount - (t.cost || 0)) / t.totalAmount) * 100 : 0),
+      saleDate: t.saleDate || t.createdAt,
+      itemsCount: t.itemsCount || t.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 0
+    }));
+
+    res.json({ success: true, data: enhancedTransactions, pagination: { current: pageNum, pageSize: limitNum, total, totalPages: Math.ceil(total / limitNum) }, summary: { totalTransactions: total, totalRevenue: enhancedTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0) } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch transactions', error: error.message });
+  }
+});
+
+// Create transaction
 app.post('/api/transactions', async (req, res) => {
   try {
     const transactionData = req.body;
 
     if (transactionData.transactionNumber) {
-      const existingTransaction = await models.Transaction.findOne({
-        transactionNumber: transactionData.transactionNumber
-      });
-
-      if (existingTransaction) {
-        return res.status(409).json({
-          success: false,
-          message: 'Transaction with this number already exists'
-        });
-      }
+      const existing = await models.Transaction.findOne({ transactionNumber: transactionData.transactionNumber });
+      if (existing) return res.status(409).json({ success: false, message: 'Transaction with this number already exists' });
     }
 
-    if (transactionData.isCreditPayment && transactionData.originalCreditId) {
-      return await handleCreditPayment(transactionData, res);
-    }
+    if (transactionData.isCreditPayment && transactionData.originalCreditId) return await handleCreditPayment(transactionData, res);
 
     if (transactionData.shop) {
       const shop = await models.Shop.findById(transactionData.shop);
-      if (shop) {
-        transactionData.shopName = shop.name;
-        transactionData.shopId = shop._id;
-      }
-    }
-
-    if (transactionData.cashierId) {
-      const cashier = await models.Cashier.findById(transactionData.cashierId);
-      if (cashier) {
-        transactionData.cashierName = cashier.name;
-      }
+      if (shop) { transactionData.shopName = shop.name; transactionData.shopId = shop._id; }
     }
 
     const items = transactionData.items || [];
-    let totalAmount = 0;
-    let totalCost = 0;
+    let totalAmount = 0, totalCost = 0;
 
     const enhancedItems = await Promise.all(items.map(async (item) => {
       const quantity = CalculationUtils.safeNumber(item.quantity, 1);
@@ -4061,7 +2134,6 @@ app.post('/api/transactions', async (req, res) => {
       const itemTotalPrice = price * quantity;
       const itemCost = buyingPrice * quantity;
       const itemProfit = itemTotalPrice - itemCost;
-      const itemProfitMargin = itemTotalPrice > 0 ? (itemProfit / itemTotalPrice) * 100 : 0;
 
       totalAmount += itemTotalPrice;
       totalCost += itemCost;
@@ -4070,75 +2142,31 @@ app.post('/api/transactions', async (req, res) => {
         try {
           const product = await models.Product.findById(item.productId);
           if (product) {
-            const currentStock = CalculationUtils.safeNumber(product.currentStock);
-            const newStock = Math.max(0, currentStock - quantity);
-
-            await models.Product.findByIdAndUpdate(item.productId, {
-              currentStock: newStock,
-              updatedAt: new Date()
-            });
-
-            console.log(`📦 Stock reduced for ${product.name}: ${currentStock} -> ${newStock} (sold: ${quantity})`);
-
-            const minStockLevel = CalculationUtils.safeNumber(product.minStockLevel || 5);
-            if (newStock === 0 || (newStock <= minStockLevel && newStock > 0)) {
+            const newStock = Math.max(0, (product.currentStock || 0) - quantity);
+            await models.Product.findByIdAndUpdate(item.productId, { currentStock: newStock, updatedAt: new Date() });
+            if (newStock === 0 || newStock <= (product.minStockLevel || 5)) {
               const alertType = newStock === 0 ? 'out_of_stock' : 'low_stock';
-
-              const now = new Date();
-              const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-              const lastAlert = product.lastStockAlertSent;
-
-              if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
-                await sendStockAlertEmail([{
-                  ...product.toObject(),
-                  shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-                }], alertType);
-
-                await models.Product.findByIdAndUpdate(item.productId, {
-                  lastStockAlertSent: now
-                });
-              }
+              await sendStockAlertEmail([{ ...product.toObject(), shopName: product.shopName || 'Unknown Shop' }], alertType);
             }
           }
-        } catch (stockError) {
-          console.error('❌ Error reducing stock for product:', item.productId, stockError);
-        }
+        } catch (stockError) { console.error('Error reducing stock:', stockError); }
       }
 
-      return {
-        ...item,
-        quantity,
-        price,
-        totalPrice: itemTotalPrice,
-        buyingPrice,
-        cost: itemCost,
-        profit: itemProfit,
-        profitMargin: itemProfitMargin
-      };
+      return { ...item, quantity, price, totalPrice: itemTotalPrice, buyingPrice, cost: itemCost, profit: itemProfit, profitMargin: itemTotalPrice > 0 ? (itemProfit / itemTotalPrice) * 100 : 0 };
     }));
 
     const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
     const isCreditTransaction = transactionData.paymentMethod === 'credit';
-
-    let recognizedRevenue = totalAmount;
-    let outstandingRevenue = 0;
-    let amountPaid = totalAmount;
-    let creditStatus = 'completed';
-    let immediateRevenue = totalAmount;
+    let recognizedRevenue = totalAmount, outstandingRevenue = 0, amountPaid = totalAmount, creditStatus = 'completed', immediateRevenue = totalAmount;
 
     if (isCreditTransaction) {
       amountPaid = amountPaidNow;
       recognizedRevenue = amountPaidNow;
       outstandingRevenue = Math.max(0, totalAmount - amountPaidNow);
       immediateRevenue = amountPaidNow;
-
-      if (outstandingRevenue <= 0) {
-        creditStatus = 'paid';
-      } else if (amountPaidNow > 0) {
-        creditStatus = 'partially_paid';
-      } else {
-        creditStatus = 'pending';
-      }
+      if (outstandingRevenue <= 0) creditStatus = 'paid';
+      else if (amountPaidNow > 0) creditStatus = 'partially_paid';
+      else creditStatus = 'pending';
     }
 
     const profit = recognizedRevenue - totalCost;
@@ -4151,11 +2179,7 @@ app.post('/api/transactions', async (req, res) => {
     transactionData.itemsCount = items.reduce((sum, item) => sum + CalculationUtils.safeNumber(item.quantity, 1), 0);
     transactionData.items = enhancedItems;
 
-    transactionData.paymentSplit = {
-      cash: 0,
-      bank_mpesa: 0,
-      credit: 0
-    };
+    transactionData.paymentSplit = { cash: 0, bank_mpesa: 0, credit: 0 };
 
     if (isCreditTransaction) {
       transactionData.isCreditTransaction = true;
@@ -4167,37 +2191,16 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.immediateRevenue = immediateRevenue;
       transactionData.creditShopName = transactionData.creditShopName || transactionData.shopName;
       transactionData.creditShopId = transactionData.creditShopId || transactionData.shopId;
-      transactionData.shopClassification = transactionData.shopClassification || transactionData.shopName;
       transactionData.upfrontPaymentAmount = amountPaidNow;
       transactionData.upfrontPaymentMethod = transactionData.upfrontPaymentMethod || 'cash';
 
-      if (transactionData.upfrontPaymentSplit) {
-        transactionData.upfrontPaymentSplit = transactionData.upfrontPaymentSplit;
-      }
-
       if (amountPaidNow > 0) {
-        if (transactionData.upfrontPaymentMethod === 'cash') {
-          transactionData.paymentSplit.cash = amountPaidNow;
-        } else if (transactionData.upfrontPaymentMethod === 'bank_mpesa') {
-          transactionData.paymentSplit.bank_mpesa = amountPaidNow;
-        } else if (transactionData.upfrontPaymentMethod === 'cash_bank_mpesa' && transactionData.upfrontPaymentSplit) {
-          transactionData.paymentSplit.cash = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.cash);
-          transactionData.paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.bank_mpesa);
-        }
+        if (transactionData.upfrontPaymentMethod === 'cash') transactionData.paymentSplit.cash = amountPaidNow;
+        else if (transactionData.upfrontPaymentMethod === 'bank_mpesa') transactionData.paymentSplit.bank_mpesa = amountPaidNow;
         transactionData.paymentSplit.credit = outstandingRevenue;
-      } else {
-        transactionData.paymentSplit.credit = totalAmount;
-      }
+      } else transactionData.paymentSplit.credit = totalAmount;
 
-      const totalSplit = transactionData.paymentSplit.cash + transactionData.paymentSplit.bank_mpesa + transactionData.paymentSplit.credit;
-      if (Math.abs(totalSplit - totalAmount) > 0.01) {
-        console.warn('⚠️ Payment split does not equal total amount:', { totalSplit, totalAmount });
-        transactionData.paymentSplit.credit = totalAmount - transactionData.paymentSplit.cash - transactionData.paymentSplit.bank_mpesa;
-      }
-
-      if (!transactionData.dueDate) {
-        transactionData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      }
+      if (!transactionData.dueDate) transactionData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     } else {
       transactionData.isCreditTransaction = false;
       transactionData.recognizedRevenue = recognizedRevenue;
@@ -4205,180 +2208,73 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.amountPaid = amountPaid;
       transactionData.status = 'completed';
       transactionData.immediateRevenue = immediateRevenue;
-
-      if (transactionData.paymentMethod === 'cash') {
-        transactionData.paymentSplit.cash = totalAmount;
-      } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
-        transactionData.paymentSplit.bank_mpesa = totalAmount;
-      } else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
+      if (transactionData.paymentMethod === 'cash') transactionData.paymentSplit.cash = totalAmount;
+      else if (['mpesa', 'bank', 'card'].includes(transactionData.paymentMethod)) transactionData.paymentSplit.bank_mpesa = totalAmount;
+      else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
         transactionData.paymentSplit.cash = CalculationUtils.safeNumber(transactionData.paymentSplit.cash);
         transactionData.paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
       }
     }
 
-    if (!transactionData.transactionNumber) {
-      transactionData.transactionNumber = `TXN-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`;
-    }
+    if (!transactionData.transactionNumber) transactionData.transactionNumber = `TXN-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`;
 
     const transaction = new models.Transaction(transactionData);
     await transaction.save();
-
     await transaction.populate('shop', 'name location type');
     await transaction.populate('cashierId', 'name email');
-    await transaction.populate('items.productId', 'name buyingPrice');
 
     if (isCreditTransaction && !transactionData.isCreditPayment) {
-      const existingCredit = await models.Credit.findOne({
-        transactionId: transaction._id
-      });
-
+      const existingCredit = await models.Credit.findOne({ transactionId: transaction._id });
       if (!existingCredit) {
         const creditData = {
           transactionId: transaction._id,
           customerName: transactionData.customerName || 'Unknown Customer',
           customerPhone: transactionData.customerPhone,
-          customerEmail: transactionData.customerEmail,
-          totalAmount: totalAmount,
-          amountPaid: amountPaidNow,
-          balanceDue: outstandingRevenue,
-          dueDate: transactionData.dueDate,
-          status: creditStatus,
-          shop: transactionData.shop,
-          shopId: transactionData.shopId,
-          shopName: transactionData.shopName,
+          totalAmount, amountPaid: amountPaidNow, balanceDue: outstandingRevenue,
+          dueDate: transactionData.dueDate, status: creditStatus,
+          shop: transactionData.shop, shopId: transactionData.shopId, shopName: transactionData.shopName,
           creditShopName: transactionData.creditShopName || transactionData.shopName,
           creditShopId: transactionData.creditShopId || transactionData.shopId,
           shopClassification: transactionData.shopClassification || transactionData.shopName,
-          cashierId: transactionData.cashierId,
-          cashierName: transactionData.cashierName,
-          recordedBy: transactionData.recordedBy || 'System',
-          notes: `Credit transaction created for ${transactionData.customerName}`,
-          upfrontPaymentAmount: amountPaidNow,
-          upfrontPaymentMethod: transactionData.upfrontPaymentMethod || 'cash',
-          upfrontPaymentSplit: transactionData.upfrontPaymentSplit || {
-            cash: 0,
-            bank_mpesa: 0
-          },
+          cashierId: transactionData.cashierId, cashierName: transactionData.cashierName,
+          upfrontPaymentAmount: amountPaidNow, upfrontPaymentMethod: transactionData.upfrontPaymentMethod || 'cash',
           immediateRevenue: amountPaidNow
         };
-
-        if (amountPaidNow > 0) {
-          creditData.paymentHistory = [{
-            amount: amountPaidNow,
-            paymentDate: new Date(),
-            paymentMethod: transactionData.upfrontPaymentMethod || 'cash',
-            recordedBy: transactionData.recordedBy || 'System',
-            cashierName: transactionData.cashierName,
-            notes: `Initial upfront payment for credit sale`
-          }];
-        }
-
-        const credit = await models.Credit.create(creditData);
-        console.log('✅ Credit record created with upfront payment:', {
-          creditId: credit._id,
-          totalAmount: credit.totalAmount,
-          amountPaid: credit.amountPaid,
-          balanceDue: credit.balanceDue,
-          status: credit.status,
-          upfrontPaymentAmount: credit.upfrontPaymentAmount,
-          upfrontPaymentMethod: credit.upfrontPaymentMethod,
-          immediateRevenue: credit.immediateRevenue
-        });
+        if (amountPaidNow > 0) creditData.paymentHistory = [{ amount: amountPaidNow, paymentDate: new Date(), paymentMethod: transactionData.upfrontPaymentMethod || 'cash', recordedBy: transactionData.recordedBy || 'System', cashierName: transactionData.cashierName, notes: 'Initial upfront payment' }];
+        await models.Credit.create(creditData);
       }
     }
 
-    res.status(201).json({
-      success: true,
-      data: transaction,
-      message: `Transaction created successfully${isCreditTransaction ? ' with credit record' : ''}`,
-      creditDetails: isCreditTransaction ? {
-        totalAmount,
-        amountPaid: amountPaidNow,
-        balanceDue: outstandingRevenue,
-        status: creditStatus,
-        upfrontPaymentAmount: transactionData.upfrontPaymentAmount,
-        upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
-        immediateRevenue: transactionData.immediateRevenue
-      } : null
-    });
+    res.status(201).json({ success: true, data: transaction, message: `Transaction created successfully${isCreditTransaction ? ' with credit record' : ''}` });
   } catch (error) {
-    console.error('Error creating transaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create transaction',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to create transaction', error: error.message });
   }
 });
 
 async function handleCreditPayment(transactionData, res) {
   try {
-    const originalCredit = await models.Credit.findById(transactionData.originalCreditId)
-      .populate('transactionId')
-      .populate('shop', 'name location type');
-
-    if (!originalCredit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Original credit record not found'
-      });
-    }
+    const originalCredit = await models.Credit.findById(transactionData.originalCreditId).populate('transactionId');
+    if (!originalCredit) return res.status(404).json({ success: false, message: 'Original credit record not found' });
 
     const paymentAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
-    const currentAmountPaid = CalculationUtils.safeNumber(originalCredit.amountPaid);
-    const newAmountPaid = currentAmountPaid + paymentAmount;
-    const totalAmount = CalculationUtils.safeNumber(originalCredit.totalAmount);
-    const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
+    const newAmountPaid = (originalCredit.amountPaid || 0) + paymentAmount;
+    const newBalanceDue = Math.max(0, (originalCredit.totalAmount || 0) - newAmountPaid);
 
     originalCredit.amountPaid = newAmountPaid;
     originalCredit.balanceDue = newBalanceDue;
-
-    let newStatus = originalCredit.status;
-    if (newBalanceDue <= 0) {
-      newStatus = 'paid';
-    } else if (newAmountPaid > 0) {
-      newStatus = 'partially_paid';
-    }
-    originalCredit.status = newStatus;
-
-    originalCredit.paymentHistory.push({
-      amount: paymentAmount,
-      paymentDate: new Date(),
-      paymentMethod: transactionData.paymentMethod,
-      recordedBy: transactionData.recordedBy || 'System',
-      cashierName: transactionData.cashierName || 'Cashier',
-      notes: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
-    });
-
-    originalCredit.updatedAt = new Date();
+    originalCredit.status = newBalanceDue <= 0 ? 'paid' : newAmountPaid > 0 ? 'partially_paid' : originalCredit.status;
+    originalCredit.paymentHistory.push({ amount: paymentAmount, paymentDate: new Date(), paymentMethod: transactionData.paymentMethod, recordedBy: transactionData.recordedBy || 'System', cashierName: transactionData.cashierName, notes: 'Credit payment' });
     await originalCredit.save();
 
     if (originalCredit.transactionId) {
-      await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
-        amountPaid: newAmountPaid,
-        recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue,
-        creditStatus: newStatus,
-        updatedAt: new Date()
-      });
+      await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, { amountPaid: newAmountPaid, recognizedRevenue: newAmountPaid, outstandingRevenue: newBalanceDue, creditStatus: originalCredit.status, updatedAt: new Date() });
     }
 
-    const paymentSplit = {
-      cash: 0,
-      bank_mpesa: 0,
-      credit: 0
-    };
+    const paymentSplit = { cash: 0, bank_mpesa: 0, credit: 0 };
+    if (transactionData.paymentMethod === 'cash') paymentSplit.cash = paymentAmount;
+    else if (['mpesa', 'bank', 'card'].includes(transactionData.paymentMethod)) paymentSplit.bank_mpesa = paymentAmount;
 
-    if (transactionData.paymentMethod === 'cash') {
-      paymentSplit.cash = paymentAmount;
-    } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
-      paymentSplit.bank_mpesa = paymentAmount;
-    } else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
-      paymentSplit.cash = CalculationUtils.safeNumber(transactionData.paymentSplit.cash);
-      paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
-    }
-
-    const paymentTransactionData = {
+    const paymentTransaction = new models.Transaction({
       ...transactionData,
       isCreditPayment: true,
       originalCreditId: originalCredit._id,
@@ -4390,42 +2286,57 @@ async function handleCreditPayment(transactionData, res) {
       isCreditTransaction: false,
       creditStatus: null,
       status: 'completed',
-      paymentSplit: paymentSplit
-    };
-
-    const paymentTransaction = new models.Transaction(paymentTransactionData);
+      paymentSplit
+    });
     await paymentTransaction.save();
 
-    console.log('✅ Credit payment processed successfully:', {
-      creditId: originalCredit._id,
-      paymentAmount,
-      newAmountPaid,
-      newBalanceDue,
-      status: newStatus,
-      paymentTransactionId: paymentTransaction._id,
-      paymentSplit: paymentSplit
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        credit: originalCredit,
-        paymentTransaction: paymentTransaction
-      },
-      message: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded successfully. New balance: ${CalculationUtils.formatCurrency(newBalanceDue)}`
-    });
+    res.status(201).json({ success: true, data: { credit: originalCredit, paymentTransaction }, message: `Payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded. New balance: ${CalculationUtils.formatCurrency(newBalanceDue)}` });
   } catch (error) {
-    console.error('❌ Error processing credit payment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process credit payment',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to process credit payment', error: error.message });
   }
 }
 
-// ==================== DEBUG ENDPOINTS ====================
+// ==================== STOCK ALERT ENDPOINTS ====================
+app.post('/api/stock/check-now', async (req, res) => {
+  try {
+    const result = await checkStockLevels();
+    res.json({ success: true, data: result, message: `Stock check completed: ${result.outOfStock} out, ${result.lowStock} low` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to check stock levels', error: error.message });
+  }
+});
 
+app.get('/api/stock/alerts', async (req, res) => {
+  try {
+    const products = await models.Product.find({ isActive: true }).populate('shop', 'name location').lean();
+    const outOfStock = products.filter(p => (p.currentStock || 0) === 0);
+    const lowStock = products.filter(p => (p.currentStock || 0) > 0 && (p.currentStock || 0) <= (p.minStockLevel || 5));
+    res.json({ success: true, data: { outOfStock: outOfStock.map(p => ({ ...p, shopName: p.shop?.name || p.shopName || 'Unknown', status: 'out_of_stock' })), lowStock: lowStock.map(p => ({ ...p, shopName: p.shop?.name || p.shopName || 'Unknown', status: 'low_stock' })), summary: { totalProducts: products.length, outOfStock: outOfStock.length, lowStock: lowStock.length } } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to get stock alerts', error: error.message });
+  }
+});
+
+// ==================== MANUAL DEVICE APPROVAL ====================
+app.post('/api/admin/manual-approve-device', async (req, res) => {
+  try {
+    const { email, secretKey } = req.body;
+    const validKey = process.env.MANUAL_APPROVAL_KEY || 'temp-key-change-me';
+    if (!secretKey || secretKey !== validKey) return res.status(403).json({ success: false, message: 'Invalid key' });
+
+    let user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const result = await models.Device.updateMany({ userId: user._id, isVerified: false }, { $set: { isVerified: true, updatedAt: new Date() } });
+    await models.VerificationRequest.deleteMany({ userId: user._id, status: 'pending' });
+
+    res.json({ success: true, message: `Approved ${result.modifiedCount} device(s)`, data: { modifiedCount: result.modifiedCount } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to approve device', error: error.message });
+  }
+});
+
+// ==================== DEBUG ENDPOINTS ====================
 app.get('/api/debug/database', async (req, res) => {
   try {
     const counts = {
@@ -4434,38 +2345,27 @@ app.get('/api/debug/database', async (req, res) => {
       cashiers: await models.Cashier.countDocuments(),
       expenses: await models.Expense.countDocuments(),
       transactions: await models.Transaction.countDocuments(),
-      users: await models.User.countDocuments(),
-      secureCodes: await models.SecureCode.countDocuments(),
-      credits: await models.Credit.countDocuments(),
-      devices: await models.Device.countDocuments(),
-      sessions: await models.Session.countDocuments(),
-      verificationRequests: await models.VerificationRequest.countDocuments()
+      credits: await models.Credit.countDocuments()
     };
-
-    res.json({
-      success: true,
-      counts,
-      database: mongoose.connection.name,
-      status: 'connected',
-      cogsCalculation: 'prorated_based_on_payment',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only',
-      upfrontPaymentTracking: 'enhanced',
-      deviceVerification: 'enabled',
-      sessionManagement: 'enabled'
-    });
+    res.json({ success: true, counts, database: mongoose.connection.name, status: 'connected' });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Database check failed',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Database check failed', error: error.message });
+  }
+});
+
+app.get('/api/debug/test-email', async (req, res) => {
+  try {
+    if (!emailTransporter) await initializeEmail();
+    if (!emailTransporter) return res.status(500).json({ success: false, message: 'Email not configured' });
+    const testEmail = req.body.email || process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+    await emailTransporter.sendMail({ from: `"Test" <${process.env.EMAIL_USER}>`, to: testEmail, subject: 'Test Email', html: '<h1>Test</h1><p>Email works!</p>' });
+    res.json({ success: true, message: 'Test email sent', sentTo: testEmail });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Test email failed', error: error.message });
   }
 });
 
 // ==================== ROOT ENDPOINT ====================
-
 app.get('/', (req, res) => {
   res.json({
     message: process.env.APP_NAME || 'Pamela Management API',
@@ -4476,50 +2376,21 @@ app.get('/', (req, res) => {
       metrics: '/api/transactions/metrics',
       combined: '/api/transactions/combined',
       stockCheck: '/api/stock/check-now',
-      stockAlerts: '/api/stock/alerts',
-      auth: {
-        requestCode: '/api/auth/request-code',
-        verifyCode: '/api/auth/verify-code',
-        cashierLogin: '/api/auth/cashier/login',
-        checkDevice: '/api/auth/check-device',
-        refreshSession: '/api/auth/refresh-session',
-        logout: '/api/auth/logout',
-        sessions: '/api/auth/sessions',
-        devices: '/api/auth/devices'
-      },
-      admin: {
-        verificationRequests: '/api/admin/verification-requests',
-        verifyDevice: '/api/admin/verify-device'
-      }
-    },
-    serverless: true,
-    deviceVerification: 'enabled',
-    sessionManagement: 'enabled',
-    cogsCalculation: 'prorated_based_on_payment',
-    creditPartialPayment: 'supported',
-    immediateRevenueTracking: 'enabled',
-    creditDisplayLogic: 'balance_due_only',
-    upfrontPaymentTracking: 'enhanced',
-    stockMonitoring: 'on-demand (trigger via /api/stock/check-now)'
+      stockAlerts: '/api/stock/alerts'
+    }
   });
 });
 
 // ==================== 404 HANDLER ====================
-
 app.use('/api/*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'API endpoint not found'
-  });
+  res.status(404).json({ success: false, message: 'API endpoint not found' });
 });
 
 // ==================== SERVERLESS EXPORT ====================
-
 let dbInitialized = false;
 
 const initializeServer = async () => {
   if (dbInitialized) return;
-
   try {
     await connectDB();
     await initializeEmail();
@@ -4535,17 +2406,12 @@ initializeServer();
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  const PORT = process.env.PORT || 5001;
   app.listen(PORT, async () => {
     await connectDB();
     await initializeEmail();
-    console.log(`\n🎉 Server Running Locally on Port ${PORT}`);
+    console.log(`\n🎉 Server Running on Port ${PORT}`);
     console.log('='.repeat(60));
     console.log(`📍 URL: http://localhost:${PORT}`);
-    console.log(`📊 Database: ${mongoose.connection.name}`);
-    console.log(`🔐 Device Verification: ENABLED`);
-    console.log(`🔑 Session Management: ENABLED`);
-    console.log(`🔔 Stock Monitoring: ON-DEMAND (use /api/stock/check-now)`);
     console.log('='.repeat(60));
   });
 }
