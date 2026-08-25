@@ -1216,8 +1216,7 @@ const initializeEmail = async () => {
   }
 };
 // ==================== FIXED SECURE CODE EMAIL FUNCTION ====================
-
-// Send Secure Code Email with Enhanced Template - FIXED to include code
+// Send Secure Code Email with Enhanced Template - FIXED
 const sendSecureCodeEmail = async (email, code, expiresIn = 15) => {
   try {
     if (!emailTransporter) {
@@ -1227,503 +1226,195 @@ const sendSecureCodeEmail = async (email, code, expiresIn = 15) => {
     
     const appName = process.env.APP_NAME || 'Pamela Management';
     
-    // Build the email HTML with the actual code
+    // SIMPLIFIED HTML - Guaranteed to show the code
     const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>🔐 Your Secure Code</title>
+      <title>🔐 Your Secure Login Code</title>
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap');
-        
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        
         body {
-          font-family: 'Poppins', Arial, sans-serif;
-          background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          font-family: Arial, sans-serif;
+          background-color: #f4f6f9;
+          margin: 0;
           padding: 20px;
         }
-        
-        .email-container {
-          max-width: 580px;
-          width: 100%;
+        .container {
+          max-width: 500px;
+          margin: 0 auto;
           background: #ffffff;
-          border-radius: 24px;
-          overflow: hidden;
-          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-          animation: floatIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-          transform: translateY(30px);
-          opacity: 0;
-        }
-        
-        @keyframes floatIn {
-          0% {
-            transform: translateY(30px) scale(0.95);
-            opacity: 0;
-          }
-          100% {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes pulse {
-          0%, 100% {
-            transform: scale(1);
-          }
-          50% {
-            transform: scale(1.05);
-          }
-        }
-        
-        @keyframes shimmer {
-          0% {
-            background-position: -200% center;
-          }
-          100% {
-            background-position: 200% center;
-          }
-        }
-        
-        @keyframes bearWave {
-          0%, 100% {
-            transform: rotate(0deg);
-          }
-          25% {
-            transform: rotate(5deg);
-          }
-          75% {
-            transform: rotate(-5deg);
-          }
-        }
-        
-        @keyframes countdown {
-          0% {
-            stroke-dashoffset: 100;
-          }
-          100% {
-            stroke-dashoffset: 0;
-          }
-        }
-        
-        .email-header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          padding: 35px 30px 25px;
-          text-align: center;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .email-header::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          left: -50%;
-          width: 200%;
-          height: 200%;
-          background: radial-gradient(circle at center, rgba(255,255,255,0.1) 0%, transparent 70%);
-          animation: shimmer 4s ease-in-out infinite;
-          background-size: 200% 200%;
-        }
-        
-        .bear-icon {
-          font-size: 52px;
-          display: inline-block;
-          animation: bearWave 2s ease-in-out infinite;
-          position: relative;
-          z-index: 1;
-        }
-        
-        .header-title {
-          color: #ffffff;
-          font-size: 24px;
-          font-weight: 700;
-          margin-top: 8px;
-          position: relative;
-          z-index: 1;
-          letter-spacing: 0.5px;
-        }
-        
-        .header-subtitle {
-          color: rgba(255,255,255,0.85);
-          font-size: 14px;
-          font-weight: 300;
-          margin-top: 4px;
-          position: relative;
-          z-index: 1;
-        }
-        
-        .header-badge {
-          display: inline-block;
-          background: rgba(255,255,255,0.2);
-          backdrop-filter: blur(10px);
-          padding: 4px 16px;
-          border-radius: 20px;
-          color: white;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          margin-top: 8px;
-          position: relative;
-          z-index: 1;
-          border: 1px solid rgba(255,255,255,0.15);
-        }
-        
-        .email-body {
-          padding: 35px 30px 30px;
-          background: #ffffff;
-        }
-        
-        .greeting {
-          font-size: 18px;
-          font-weight: 600;
-          color: #2d3748;
-          margin-bottom: 6px;
-        }
-        
-        .greeting-text {
-          color: #4a5568;
-          font-size: 14px;
-          line-height: 1.7;
-          margin-bottom: 24px;
-        }
-        
-        .code-container {
-          background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
           border-radius: 16px;
-          padding: 30px 20px 25px;
+          padding: 30px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
           text-align: center;
-          border: 2px dashed #cbd5e0;
-          position: relative;
-          margin-bottom: 24px;
-          transition: all 0.3s ease;
         }
-        
-        .code-container:hover {
-          border-color: #667eea;
-          box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
-        }
-        
-        .code-label {
-          font-size: 12px;
-          font-weight: 600;
-          color: #a0aec0;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-        }
-        
-        /* CRITICAL FIX: The code value display */
-        .code-value {
-          font-size: 52px;
-          font-weight: 800;
-          letter-spacing: 10px;
-          margin: 12px 0 8px;
-          font-family: 'Courier New', monospace;
+        .header {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          animation: pulse 2s ease-in-out infinite;
-          padding: 8px 0;
+          color: white;
+          padding: 20px;
+          border-radius: 12px 12px 0 0;
+          margin: -30px -30px 25px -30px;
         }
-        
-        .code-value-fallback {
-          font-size: 52px;
-          font-weight: 800;
-          letter-spacing: 10px;
-          color: #667eea;
-          margin: 12px 0 8px;
-          font-family: 'Courier New', monospace;
-          animation: pulse 2s ease-in-out infinite;
-          padding: 8px 0;
-          text-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        .header h1 {
+          margin: 0;
+          font-size: 22px;
         }
-        
-        .code-expiry {
-          font-size: 13px;
-          color: #718096;
-          margin-top: 8px;
-        }
-        
-        .code-expiry strong {
-          color: #e53e3e;
-          font-weight: 600;
-        }
-        
-        .timer-ring {
-          display: inline-block;
-          width: 60px;
-          height: 60px;
-          margin-top: 12px;
-          position: relative;
-        }
-        
-        .timer-ring svg {
-          transform: rotate(-90deg);
-        }
-        
-        .timer-ring .bg {
-          fill: none;
-          stroke: #e2e8f0;
-          stroke-width: 4;
-        }
-        
-        .timer-ring .progress {
-          fill: none;
-          stroke: #667eea;
-          stroke-width: 4;
-          stroke-linecap: round;
-          stroke-dasharray: 100;
-          stroke-dashoffset: 0;
-          animation: countdown ${expiresIn * 60}s linear forwards;
-        }
-        
-        .timer-text {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          font-size: 14px;
-          font-weight: 700;
-          color: #2d3748;
-        }
-        
-        .features-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          margin: 20px 0 24px;
-        }
-        
-        .feature-item {
-          background: #f7fafc;
-          border-radius: 10px;
-          padding: 12px 14px;
-          text-align: center;
-          transition: all 0.2s ease;
-          border: 1px solid transparent;
-        }
-        
-        .feature-item:hover {
-          border-color: #667eea;
-          background: #f0f4ff;
-        }
-        
-        .feature-icon {
-          font-size: 20px;
+        .header .bear {
+          font-size: 40px;
           display: block;
-          margin-bottom: 2px;
+          margin-bottom: 5px;
         }
-        
-        .feature-label {
-          font-size: 11px;
-          font-weight: 600;
-          color: #4a5568;
-        }
-        
-        .feature-value {
-          font-size: 11px;
-          color: #718096;
-        }
-        
-        .security-notice {
-          background: linear-gradient(135deg, #fff5f5 0%, #fef5e7 100%);
+        .code-box {
+          background: #f0f4ff;
+          border: 2px dashed #667eea;
           border-radius: 12px;
-          padding: 16px 20px;
-          border-left: 4px solid #e53e3e;
-          margin-bottom: 24px;
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-        }
-        
-        .security-icon {
-          font-size: 20px;
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-        
-        .security-text {
-          font-size: 12px;
-          color: #4a5568;
-          line-height: 1.6;
-        }
-        
-        .security-text strong {
-          color: #e53e3e;
-        }
-        
-        .divider {
-          border: none;
-          height: 1px;
-          background: linear-gradient(to right, transparent, #e2e8f0, transparent);
+          padding: 25px 20px;
           margin: 20px 0;
         }
-        
+        .code-box .label {
+          font-size: 13px;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          font-weight: 600;
+        }
+        .code-box .code {
+          font-size: 48px;
+          font-weight: 800;
+          letter-spacing: 12px;
+          color: #4a3f7a;
+          font-family: 'Courier New', monospace;
+          margin: 10px 0;
+          padding: 10px;
+          background: white;
+          border-radius: 8px;
+          display: inline-block;
+          min-width: 200px;
+        }
+        .expiry {
+          color: #6b7280;
+          font-size: 14px;
+          margin-top: 10px;
+        }
+        .expiry strong {
+          color: #e53e3e;
+        }
+        .security-note {
+          background: #fff5f5;
+          border-left: 4px solid #e53e3e;
+          padding: 12px 16px;
+          margin: 20px 0;
+          text-align: left;
+          font-size: 13px;
+          color: #4a5568;
+          border-radius: 4px;
+        }
+        .security-note strong {
+          color: #e53e3e;
+        }
         .footer {
-          padding: 20px 30px 25px;
-          background: #f7fafc;
-          text-align: center;
-          border-top: 1px solid #e2e8f0;
-        }
-        
-        .footer-text {
+          margin-top: 25px;
+          padding-top: 20px;
+          border-top: 1px solid #e5e7eb;
           font-size: 12px;
-          color: #a0aec0;
-          line-height: 1.8;
+          color: #9ca3af;
         }
-        
-        .footer-text strong {
+        .footer strong {
           color: #4a5568;
         }
-        
-        .footer-logo {
-          font-size: 13px;
-          font-weight: 700;
-          color: #2d3748;
-          margin-bottom: 4px;
+        .features {
+          display: flex;
+          justify-content: center;
+          gap: 15px;
+          margin: 15px 0;
+          flex-wrap: wrap;
         }
-        
-        .footer-logo span {
-          color: #667eea;
-        }
-        
-        @media (max-width: 480px) {
-          .email-body {
-            padding: 25px 16px 20px;
-          }
-          .code-value, .code-value-fallback {
-            font-size: 34px;
-            letter-spacing: 6px;
-          }
-          .features-grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-          }
-          .header-title {
-            font-size: 20px;
-          }
-          .bear-icon {
-            font-size: 40px;
-          }
+        .feature {
+          background: #f9fafb;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #4a5568;
         }
       </style>
     </head>
     <body>
-      <div class="email-container">
-        <!-- HEADER -->
-        <div class="email-header">
-          <div class="bear-icon">🐻</div>
-          <div class="header-title">🔐 Your Secure Code</div>
-          <div class="header-subtitle">${appName} • Secure Login Verification</div>
-          <div class="header-badge">✦ SECURE CODE ✦</div>
+      <div class="container">
+        <div class="header">
+          <span class="bear">🐻</span>
+          <h1>🔐 Your Secure Login Code</h1>
+          <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">${appName}</p>
         </div>
         
-        <!-- BODY -->
-        <div class="email-body">
-          <div class="greeting">Hello, <span style="color: #667eea;">Valued User</span> 👋</div>
-          <p class="greeting-text">
-            You've requested a secure login code for <strong>${appName}</strong>. 
-            Please use the code below to complete your authentication.
-          </p>
-          
-          <!-- CODE - FIXED: Now displays the actual code -->
-          <div class="code-container">
-            <div class="code-label">✦ Your Secure Code ✦</div>
-            <!-- Display the code in a large, clear format -->
-            <div style="font-size: 56px; font-weight: 800; letter-spacing: 12px; margin: 12px 0 8px; font-family: 'Courier New', monospace; color: #667eea; animation: pulse 2s ease-in-out infinite; padding: 8px 0; text-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);">
-              ${code}
-            </div>
-            <!-- Also show a more subtle version -->
-            <div style="font-size: 14px; color: #a0aec0; margin-top: 4px; letter-spacing: 2px; font-weight: 300;">
-              • • • • • • • • • • • • • • • • • • • •
-            </div>
-            <div class="code-expiry">
-              ⏰ This code expires in <strong>${expiresIn} minutes</strong>
-            </div>
-            
-            <!-- Timer Animation -->
-            <div class="timer-ring">
-              <svg viewBox="0 0 60 60">
-                <circle class="bg" cx="30" cy="30" r="26" />
-                <circle class="progress" cx="30" cy="30" r="26" />
-              </svg>
-              <div class="timer-text">${expiresIn}m</div>
-            </div>
-          </div>
-          
-          <!-- Features -->
-          <div class="features-grid">
-            <div class="feature-item">
-              <span class="feature-icon">🔒</span>
-              <div class="feature-label">One-Time Use</div>
-              <div class="feature-value">Single use only</div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">⏰</span>
-              <div class="feature-label">Time Limited</div>
-              <div class="feature-value">${expiresIn} min expiry</div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">🛡️</span>
-              <div class="feature-label">Secure</div>
-              <div class="feature-value">Encrypted</div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">🐻</span>
-              <div class="feature-label">Bear Protected</div>
-              <div class="feature-value">Safe & secure</div>
-            </div>
-          </div>
-          
-          <!-- Security Notice -->
-          <div class="security-notice">
-            <span class="security-icon">⚠️</span>
-            <div class="security-text">
-              <strong>Security Alert:</strong> Never share this code with anyone. 
-              Our team will never ask for your code. If you didn't request this, 
-              please ignore this email.
-            </div>
-          </div>
-          
-          <hr class="divider" />
-          
-          <div style="text-align: center; font-size: 13px; color: #718096;">
-            <span style="display: inline-block; background: #f0f4ff; padding: 4px 12px; border-radius: 12px; font-weight: 600; color: #667eea;">
-              🐻 Bear Secure Code System v2.0
-            </span>
-          </div>
+        <p style="color: #4a5568; font-size: 16px; margin-bottom: 5px;">
+          Hello <strong>Valued User</strong> 👋
+        </p>
+        <p style="color: #6b7280; font-size: 14px; margin-top: 0;">
+          Use the code below to complete your login to <strong>${appName}</strong>.
+        </p>
+        
+        <!-- CODE BOX - The code is displayed clearly here -->
+        <div class="code-box">
+          <div class="label">✦ Your Secure Code ✦</div>
+          <div class="code">${code}</div>
+          <div class="expiry">⏰ Expires in <strong>${expiresIn} minutes</strong></div>
         </div>
         
-        <!-- FOOTER -->
+        <div class="features">
+          <span class="feature">🔒 One-Time Use</span>
+          <span class="feature">⏰ Time Limited</span>
+          <span class="feature">🛡️ Secure</span>
+        </div>
+        
+        <div class="security-note">
+          <strong>⚠️ Security Alert:</strong> Never share this code with anyone. 
+          Our team will never ask for your code. If you didn't request this, 
+          please ignore this email.
+        </div>
+        
+        <div style="font-size: 13px; color: #667eea; font-weight: 600; margin: 10px 0;">
+          🐻 Bear Secure Code System
+        </div>
+        
         <div class="footer">
-          <div class="footer-logo">🐻 <span>${appName}</span></div>
-          <div class="footer-text">
-            This is an automated message, please do not reply.<br />
-            &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
-          </div>
+          <strong>${appName}</strong><br>
+          This is an automated message, please do not reply.<br>
+          &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
         </div>
       </div>
     </body>
     </html>
     `;
     
-    // Send the email
+    // Plain text fallback (some email clients prefer this)
+    const text = `
+    =========================================
+    🐻 BEAR SECURE CODE SYSTEM 🐻
+    =========================================
+    
+    Hello Valued User,
+    
+    Your secure login code for ${appName} is:
+    
+    🔐 CODE: ${code}
+    
+    This code expires in ${expiresIn} minutes.
+    
+    ⚠️ Never share this code with anyone.
+    
+    =========================================
+    ${appName} - Secure Login Verification
+    =========================================
+    `;
+    
+    // Send the email with both HTML and plain text
     await emailTransporter.sendMail({
       from: `"🐻 ${appName} Security" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: `🔐 Your Secure Login Code - ${appName}`,
+      text: text,
       html: html,
       priority: 'high',
       headers: {
@@ -1739,7 +1430,6 @@ const sendSecureCodeEmail = async (email, code, expiresIn = 15) => {
     throw new Error('Failed to send secure code.');
   }
 };
-
 // Send Device Verification Email with Bear Theme
 const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
   try {
