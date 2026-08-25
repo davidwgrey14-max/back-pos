@@ -2343,7 +2343,7 @@ app.post('/api/auth/request-code', [body('email').isEmail().normalizeEmail()], a
   }
 });
 
-// Verify secure code with device verification
+// Verify secure code - SIMPLIFIED (No device verification)
 app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), body('code').isLength({ min: 6, max: 6 }).isNumeric()], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2371,80 +2371,32 @@ app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), bod
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
     if (user.isActive === false) return res.status(403).json({ success: false, message: 'Account deactivated.' });
 
-    const deviceInfo = getDeviceInfo(req);
-    let device = await Device.findOne({ userId: user._id, deviceId: deviceInfo.deviceId });
-
-    if (!device) {
-      device = new Device({
-        userId: user._id, deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType,
-        os: deviceInfo.os, osVersion: deviceInfo.osVersion,
-        browser: deviceInfo.browser, browserVersion: deviceInfo.browserVersion,
-        macAddress: deviceInfo.macAddress, ipAddress: deviceInfo.ipAddress,
-        isVerified: user.role === 'admin',
-        firstLogin: new Date(), lastLogin: new Date()
-      });
-      await device.save();
-
-      if (user.role !== 'admin') {
-        const requestToken = crypto.randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id, deviceId: device._id, requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-
-        return res.status(403).json({
-          success: false, requiresVerification: true,
-          message: '🐻 New device detected. Please wait for admin approval.',
-          deviceInfo: { deviceName: device.deviceName, os: device.os, browser: device.browser, macAddress: device.macAddress }
-        });
-      }
-    } else if (!device.isVerified) {
-      const pendingRequest = await VerificationRequest.findOne({ deviceId: device._id, status: 'pending' });
-      if (!pendingRequest) {
-        const requestToken = crypto.randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id, deviceId: device._id, requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-      }
-      return res.status(403).json({ success: false, requiresVerification: true, message: 'Device pending verification.' });
-    }
-
-    device.lastLogin = new Date();
-    device.loginCount = (device.loginCount || 0) + 1;
-    await device.save();
-
+    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
     const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
-    const session = new Session({
-      userId: user._id, deviceId: device._id, token,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-    });
-    await session.save();
 
-    const userData = { _id: user._id, name: user.name, email: user.email, role: user.role || 'cashier', lastLogin: user.lastLogin };
-    if (user.role === 'cashier') { userData.shopId = user.shopId; userData.shopName = user.shopName; }
+    const userData = { 
+      _id: user._id, 
+      name: user.name, 
+      email: user.email, 
+      role: user.role || 'cashier', 
+      lastLogin: user.lastLogin 
+    };
+    if (user.role === 'cashier') { 
+      userData.shopId = user.shopId; 
+      userData.shopName = user.shopName; 
+    }
 
     return res.status(200).json({ 
       success: true, 
       user: userData, 
       token, 
-      device: { id: device._id, deviceName: device.deviceName, os: device.os, browser: device.browser, isVerified: device.isVerified }, 
-      sessionId: session._id, 
-      message: '🐻 Login successful! Welcome back!', 
-      sessionTimeout: 5 
+      message: '🐻 Login successful! Welcome back!'
     });
   } catch (error) {
+    console.error('Login error:', error);
     return res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
   }
 });
