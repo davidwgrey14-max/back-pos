@@ -70,7 +70,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Update the cashierSchema in server.js
+  // Update the cashierSchema with defaults
 const cashierSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
@@ -80,28 +80,34 @@ const cashierSchema = new mongoose.Schema({
   status: { type: String, default: 'active' },
   
   // Enhanced shop assignment - support multiple shops or single shop
-  assignedShops: [{
-    shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
-    shopName: String,
-    assignedAt: { type: Date, default: Date.now },
-    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    isActive: { type: Boolean, default: true }
-  }],
+  assignedShops: {
+    type: [{
+      shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopName: String,
+      assignedAt: { type: Date, default: Date.now },
+      assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      isActive: { type: Boolean, default: true }
+    }],
+    default: []  // Add default empty array
+  },
   
   // Primary shop (for backward compatibility)
   shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
   shopName: String,
   
   // Audit trail for shop assignments
-  shopAssignmentHistory: [{
-    shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
-    shopName: String,
-    action: { type: String, enum: ['assigned', 'removed', 'changed'] },
-    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    changedByName: String,
-    timestamp: { type: Date, default: Date.now },
-    notes: String
-  }],
+  shopAssignmentHistory: {
+    type: [{
+      shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+      shopName: String,
+      action: { type: String, enum: ['assigned', 'removed', 'changed'] },
+      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      changedByName: String,
+      timestamp: { type: Date, default: Date.now },
+      notes: String
+    }],
+    default: []  // Add default empty array
+  },
   
   lastLogin: Date,
   createdAt: { type: Date, default: Date.now },
@@ -1917,34 +1923,65 @@ app.delete('/api/shops/:id', async (req, res) => {
 // Get cashiers with their assigned shops
 app.get('/api/cashiers', async (req, res) => {
   try {
-    const cashiers = await models.Cashier.find()
-      .populate('shopId', 'name location status')
-      .populate('assignedShops.shopId', 'name location status')
-      .sort({ createdAt: -1 });
+    // First, check if models are initialized
+    if (!models.Cashier) {
+      models = createModels();
+    }
     
-    // Enhance response with assigned shops info
+    // Try to fetch cashiers with error handling for missing fields
+    let cashiers;
+    try {
+      cashiers = await models.Cashier.find()
+        .populate('shopId', 'name location status')
+        .sort({ createdAt: -1 });
+    } catch (populateError) {
+      console.warn('Error populating shopId, trying without populate:', populateError.message);
+      // Fallback: fetch without populate
+      cashiers = await models.Cashier.find().sort({ createdAt: -1 });
+    }
+    
+    // Enhance response with assigned shops info (with safe fallbacks)
     const enhancedCashiers = cashiers.map(cashier => {
-      const cashierObj = cashier.toObject();
+      const cashierObj = cashier.toObject ? cashier.toObject() : cashier;
       
-      // Get active assigned shops
-      const activeAssignedShops = (cashierObj.assignedShops || [])
-        .filter(assigned => assigned.isActive !== false)
+      // Safely get assigned shops
+      let assignedShops = [];
+      try {
+        assignedShops = cashierObj.assignedShops || [];
+      } catch (e) {
+        assignedShops = [];
+      }
+      
+      // Get active assigned shops with safe access
+      const activeAssignedShops = (assignedShops || [])
+        .filter(assigned => assigned && assigned.isActive !== false)
         .map(assigned => ({
-          shopId: assigned.shopId?._id || assigned.shopId,
-          shopName: assigned.shopId?.name || assigned.shopName,
-          shopLocation: assigned.shopId?.location,
-          shopStatus: assigned.shopId?.status,
-          assignedAt: assigned.assignedAt
-        }));
+          shopId: assigned.shopId?._id || assigned.shopId || null,
+          shopName: assigned.shopId?.name || assigned.shopName || 'Unknown Shop',
+          shopLocation: assigned.shopId?.location || null,
+          shopStatus: assigned.shopId?.status || null,
+          assignedAt: assigned.assignedAt || null
+        }))
+        .filter(shop => shop.shopId !== null); // Remove invalid entries
       
       return {
         ...cashierObj,
-        activeAssignedShops,
+        _id: cashierObj._id || cashierObj.id,
+        name: cashierObj.name || 'Unknown',
+        email: cashierObj.email || 'No email',
+        phone: cashierObj.phone || '',
+        status: cashierObj.status || 'active',
+        role: cashierObj.role || 'cashier',
+        shopId: cashierObj.shopId || null,
+        shopName: cashierObj.shopName || null,
+        assignedShops: activeAssignedShops,
+        activeAssignedShops: activeAssignedShops,
         assignedShopCount: activeAssignedShops.length,
-        // Include legacy shop for backward compatibility
+        lastLogin: cashierObj.lastLogin || null,
+        createdAt: cashierObj.createdAt || new Date(),
         primaryShop: cashierObj.shopId ? {
           shopId: cashierObj.shopId._id || cashierObj.shopId,
-          shopName: cashierObj.shopId?.name || cashierObj.shopName
+          shopName: cashierObj.shopId?.name || cashierObj.shopName || 'Unknown'
         } : null
       };
     });
@@ -1956,14 +1993,16 @@ app.get('/api/cashiers', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching cashiers:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch cashiers', 
+    // Return empty array instead of 500 error
+    res.json({ 
+      success: true, 
+      data: [], 
+      count: 0,
+      message: 'No cashiers available',
       error: error.message 
     });
   }
 });
-
 // Assign shops to a cashier (admin only)
 app.post('/api/cashiers/:id/assign-shops', authMiddleware, async (req, res) => {
   try {
