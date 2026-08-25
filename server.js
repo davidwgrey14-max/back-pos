@@ -70,21 +70,43 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Cashier Schema
-  const cashierSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    phone: String,
-    password: String,
-    role: { type: String, default: 'cashier' },
-    status: { type: String, default: 'active' },
+  // Update the cashierSchema in server.js
+const cashierSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  phone: String,
+  password: String,
+  role: { type: String, default: 'cashier' },
+  status: { type: String, default: 'active' },
+  
+  // Enhanced shop assignment - support multiple shops or single shop
+  assignedShops: [{
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     shopName: String,
-    lastLogin: Date,
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
-  });
-
+    assignedAt: { type: Date, default: Date.now },
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    isActive: { type: Boolean, default: true }
+  }],
+  
+  // Primary shop (for backward compatibility)
+  shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+  shopName: String,
+  
+  // Audit trail for shop assignments
+  shopAssignmentHistory: [{
+    shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
+    shopName: String,
+    action: { type: String, enum: ['assigned', 'removed', 'changed'] },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    changedByName: String,
+    timestamp: { type: Date, default: Date.now },
+    notes: String
+  }],
+  
+  lastLogin: Date,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
   // Expense Schema
   const expenseSchema = new mongoose.Schema({
     description: { type: String, required: true },
@@ -1472,49 +1494,179 @@ app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), bod
   }
 });
 
-// Cashier Login
+// Update the cashier login response to include assigned shops
 app.post('/api/auth/cashier/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email and password required' 
+      });
+    }
 
     const normalizedEmail = email.toLowerCase().trim();
-    let user = await models.User.findOne({ email: normalizedEmail, role: { $in: ['cashier', 'admin'] } });
+    let user = await models.User.findOne({ 
+      email: normalizedEmail, 
+      role: { $in: ['cashier', 'admin'] } 
+    });
     let cashier = null;
 
     if (!user) {
-      cashier = await models.Cashier.findOne({ email: normalizedEmail, status: 'active' }).populate('shopId', 'name location');
-      if (!cashier) return res.status(404).json({ success: false, message: 'Cashier account not found' });
+      cashier = await models.Cashier.findOne({ 
+        email: normalizedEmail, 
+        status: 'active' 
+      }).populate('shopId', 'name location');
+      
+      if (!cashier) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Cashier account not found' 
+        });
+      }
     }
 
     if (user) {
-      cashier = await models.Cashier.findOne({ email: normalizedEmail, status: 'active' }).populate('shopId', 'name location');
+      cashier = await models.Cashier.findOne({ 
+        email: normalizedEmail, 
+        status: 'active' 
+      }).populate('shopId', 'name location');
+      
       if (!cashier) {
+        // Handle admin login without cashier record
         if (user.role === 'admin') {
-          cashier = { _id: user._id, name: user.name, email: user.email, role: user.role, status: 'active', lastLogin: new Date(), shopId: null, shopName: null };
+          cashier = { 
+            _id: user._id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role, 
+            status: 'active', 
+            lastLogin: new Date(),
+            shopId: null,
+            shopName: null,
+            assignedShops: []
+          };
         } else {
-          if (!user.password) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-          const isPasswordValid = user.password.startsWith('$2b$') ? await bcrypt.compare(password, user.password) : user.password === password;
-          if (!isPasswordValid) return res.status(401).json({ success: false, message: 'Invalid password' });
-          cashier = { _id: user._id, name: user.name, email: user.email, role: user.role, status: 'active', lastLogin: new Date(), shopId: null, shopName: null };
+          if (!user.password) {
+            return res.status(401).json({ 
+              success: false, 
+              message: 'Invalid credentials.' 
+            });
+          }
+          const isPasswordValid = user.password.startsWith('$2b$') 
+            ? await bcrypt.compare(password, user.password) 
+            : user.password === password;
+          
+          if (!isPasswordValid) {
+            return res.status(401).json({ 
+              success: false, 
+              message: 'Invalid password' 
+            });
+          }
+          
+          cashier = { 
+            _id: user._id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role, 
+            status: 'active', 
+            lastLogin: new Date(),
+            shopId: null,
+            shopName: null,
+            assignedShops: []
+          };
         }
       }
     }
 
     if (cashier && cashier.password && cashier.password.startsWith('$2b$')) {
       const isPasswordValid = await bcrypt.compare(password, cashier.password);
-      if (!isPasswordValid) return res.status(401).json({ success: false, message: 'Invalid password' });
+      if (!isPasswordValid) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Invalid password' 
+        });
+      }
+    }
+
+    // Get active assigned shops
+    let assignedShops = [];
+    if (cashier.assignedShops && cashier.assignedShops.length > 0) {
+      // Populate shop details
+      const assignedShopIds = cashier.assignedShops
+        .filter(a => a.isActive !== false)
+        .map(a => a.shopId);
+      
+      if (assignedShopIds.length > 0) {
+        const shops = await models.Shop.find({
+          _id: { $in: assignedShopIds },
+          status: 'active'
+        }).select('name location status type');
+        
+        assignedShops = shops.map(shop => ({
+          shopId: shop._id,
+          name: shop.name,
+          location: shop.location,
+          status: shop.status,
+          type: shop.type,
+          isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
+        }));
+      }
+    }
+
+    // If no assigned shops but has primary shop, add it
+    if (assignedShops.length === 0 && cashier.shopId) {
+      const shop = await models.Shop.findById(cashier.shopId).select('name location status type');
+      if (shop) {
+        assignedShops.push({
+          shopId: shop._id,
+          name: shop.name,
+          location: shop.location,
+          status: shop.status,
+          type: shop.type,
+          isPrimary: true
+        });
+      }
     }
 
     const token = generateAuthToken(cashier._id, cashier.email, cashier.role || 'cashier');
-    const userData = { _id: cashier._id, name: cashier.name, email: cashier.email, role: cashier.role || 'cashier', status: cashier.status || 'active', lastLogin: cashier.lastLogin, shopId: cashier.shopId?._id || null, shopName: cashier.shopId?.name || null };
+    
+    const userData = {
+      _id: cashier._id,
+      name: cashier.name,
+      email: cashier.email,
+      role: cashier.role || 'cashier',
+      status: cashier.status || 'active',
+      lastLogin: cashier.lastLogin,
+      primaryShop: cashier.shopId ? {
+        shopId: cashier.shopId._id || cashier.shopId,
+        shopName: cashier.shopId.name || cashier.shopName
+      } : null,
+      assignedShops: assignedShops,
+      shopCount: assignedShops.length,
+      canAccessMultipleShops: assignedShops.length > 1
+    };
 
-    res.json({ success: true, user: userData, token, message: 'Login successful' });
+    // Update last login
+    await models.Cashier.findByIdAndUpdate(cashier._id, { 
+      lastLogin: new Date() 
+    });
+
+    res.json({ 
+      success: true, 
+      user: userData, 
+      token, 
+      message: 'Login successful',
+      assignedShops: assignedShops
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error during login.' });
+    console.error('Cashier login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during login.' 
+    });
   }
 });
-
 // Check device
 app.post('/api/auth/check-device', async (req, res) => {
   try {
@@ -1571,6 +1723,37 @@ app.post('/api/auth/check-device', async (req, res) => {
 });
 
 // ==================== SESSION MANAGEMENT ====================
+// server.js - Add this endpoint if not present
+
+// Refresh session endpoint
+app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
+  try {
+    // Extend session expiry
+    const newExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 more minutes
+    req.session.expiresAt = newExpiry;
+    await req.session.save();
+    
+    // Update device last activity
+    if (req.deviceId) {
+      await Device.findByIdAndUpdate(req.deviceId, { 
+        lastActivity: new Date() 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Session refreshed successfully',
+      expiresAt: newExpiry,
+      timeRemaining: 300 // 5 minutes in seconds
+    });
+  } catch (error) {
+    console.error('Session refresh error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to refresh session' 
+    });
+  }
+});
 app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
   res.json({ success: true, message: 'Session refreshed', expiresAt: req.session.expiresAt });
 });
@@ -1729,49 +1912,414 @@ app.delete('/api/shops/:id', async (req, res) => {
   }
 });
 
-// ==================== CASHIER ROUTES ====================
+// ==================== CASHIER SHOP ASSIGNMENT ROUTES ====================
+
+// Get cashiers with their assigned shops
 app.get('/api/cashiers', async (req, res) => {
   try {
-    const cashiers = await models.Cashier.find().populate('shopId', 'name location').sort({ createdAt: -1 });
-    res.json({ success: true, data: cashiers, count: cashiers.length });
+    const cashiers = await models.Cashier.find()
+      .populate('shopId', 'name location status')
+      .populate('assignedShops.shopId', 'name location status')
+      .sort({ createdAt: -1 });
+    
+    // Enhance response with assigned shops info
+    const enhancedCashiers = cashiers.map(cashier => {
+      const cashierObj = cashier.toObject();
+      
+      // Get active assigned shops
+      const activeAssignedShops = (cashierObj.assignedShops || [])
+        .filter(assigned => assigned.isActive !== false)
+        .map(assigned => ({
+          shopId: assigned.shopId?._id || assigned.shopId,
+          shopName: assigned.shopId?.name || assigned.shopName,
+          shopLocation: assigned.shopId?.location,
+          shopStatus: assigned.shopId?.status,
+          assignedAt: assigned.assignedAt
+        }));
+      
+      return {
+        ...cashierObj,
+        activeAssignedShops,
+        assignedShopCount: activeAssignedShops.length,
+        // Include legacy shop for backward compatibility
+        primaryShop: cashierObj.shopId ? {
+          shopId: cashierObj.shopId._id || cashierObj.shopId,
+          shopName: cashierObj.shopId?.name || cashierObj.shopName
+        } : null
+      };
+    });
+    
+    res.json({ 
+      success: true, 
+      data: enhancedCashiers, 
+      count: enhancedCashiers.length 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch cashiers', error: error.message });
+    console.error('Error fetching cashiers:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch cashiers', 
+      error: error.message 
+    });
   }
 });
 
-app.post('/api/cashiers', async (req, res) => {
+// Assign shops to a cashier (admin only)
+app.post('/api/cashiers/:id/assign-shops', authMiddleware, async (req, res) => {
   try {
-    const cashierData = req.body;
-    if (cashierData.password) cashierData.password = await bcrypt.hash(cashierData.password, 10);
-    const cashier = new models.Cashier(cashierData);
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required to assign shops' 
+      });
+    }
+
+    const { id } = req.params;
+    const { shopIds, action, notes } = req.body;
+    
+    if (!shopIds || !Array.isArray(shopIds) || shopIds.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'At least one shop ID is required' 
+      });
+    }
+
+    const cashier = await models.Cashier.findById(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    // Verify shops exist
+    const shops = await models.Shop.find({ 
+      _id: { $in: shopIds },
+      status: 'active' 
+    });
+    
+    if (shops.length !== shopIds.length) {
+      const foundIds = shops.map(s => s._id.toString());
+      const missingIds = shopIds.filter(id => !foundIds.includes(id));
+      return res.status(400).json({ 
+        success: false, 
+        message: `Some shops not found or inactive: ${missingIds.join(', ')}` 
+      });
+    }
+
+    // Initialize assignedShops array if not exists
+    if (!cashier.assignedShops) {
+      cashier.assignedShops = [];
+    }
+
+    // Initialize history if not exists
+    if (!cashier.shopAssignmentHistory) {
+      cashier.shopAssignmentHistory = [];
+    }
+
+    const adminName = req.user.name || 'Admin';
+    const adminId = req.user._id;
+
+    // For each shop, either assign or remove
+    for (const shopId of shopIds) {
+      const shop = shops.find(s => s._id.toString() === shopId);
+      
+      if (action === 'assign') {
+        // Check if already assigned
+        const existingAssignment = cashier.assignedShops.find(
+          a => a.shopId && a.shopId.toString() === shopId
+        );
+        
+        if (!existingAssignment) {
+          // Add new assignment
+          cashier.assignedShops.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            assignedAt: new Date(),
+            assignedBy: adminId,
+            isActive: true
+          });
+          
+          // Add to history
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'assigned',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Assigned to shop: ${shop.name}`
+          });
+        } else if (existingAssignment.isActive === false) {
+          // Reactivate
+          existingAssignment.isActive = true;
+          existingAssignment.assignedAt = new Date();
+          existingAssignment.assignedBy = adminId;
+          
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'assigned',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Reactivated assignment to shop: ${shop.name}`
+          });
+        }
+      } else if (action === 'remove') {
+        // Deactivate assignment
+        const assignment = cashier.assignedShops.find(
+          a => a.shopId && a.shopId.toString() === shopId
+        );
+        if (assignment) {
+          assignment.isActive = false;
+          
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'removed',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Removed from shop: ${shop.name}`
+          });
+        }
+      }
+    }
+
+    // If only one shop assigned and no primary shop set, set it as primary
+    const activeShops = cashier.assignedShops.filter(a => a.isActive !== false);
+    if (activeShops.length === 1 && !cashier.shopId) {
+      cashier.shopId = activeShops[0].shopId;
+      cashier.shopName = activeShops[0].shopName;
+    }
+
+    cashier.updatedAt = new Date();
     await cashier.save();
-    await cashier.populate('shopId', 'name location');
-    res.status(201).json({ success: true, data: cashier, message: 'Cashier created successfully' });
+
+    const updatedCashier = await models.Cashier.findById(id)
+      .populate('shopId', 'name location')
+      .populate('assignedShops.shopId', 'name location status');
+
+    res.json({ 
+      success: true, 
+      data: updatedCashier, 
+      message: `Shops ${action === 'assign' ? 'assigned to' : 'removed from'} cashier successfully` 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to create cashier', error: error.message });
+    console.error('Error assigning shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to assign shops', 
+      error: error.message 
+    });
   }
 });
 
-app.put('/api/cashiers/:id', async (req, res) => {
+// Get shops assigned to a specific cashier
+app.get('/api/cashiers/:id/shops', async (req, res) => {
   try {
-    const updateData = req.body;
-    if (updateData.password && updateData.password.trim() !== '') updateData.password = await bcrypt.hash(updateData.password, 10);
-    else delete updateData.password;
-    const cashier = await models.Cashier.findByIdAndUpdate(req.params.id, { ...updateData, updatedAt: new Date() }, { new: true, runValidators: true }).populate('shopId', 'name location');
-    if (!cashier) return res.status(404).json({ success: false, message: 'Cashier not found' });
-    res.json({ success: true, data: cashier, message: 'Cashier updated successfully' });
+    const { id } = req.params;
+    const cashier = await models.Cashier.findById(id)
+      .populate('assignedShops.shopId', 'name location status type')
+      .populate('shopId', 'name location');
+
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    // Get active assigned shops
+    const assignedShops = (cashier.assignedShops || [])
+      .filter(a => a.isActive !== false)
+      .map(a => ({
+        shopId: a.shopId?._id || a.shopId,
+        shopName: a.shopId?.name || a.shopName,
+        shopLocation: a.shopId?.location,
+        shopStatus: a.shopId?.status,
+        shopType: a.shopId?.type,
+        assignedAt: a.assignedAt,
+        isPrimary: cashier.shopId && cashier.shopId._id.toString() === (a.shopId?._id || a.shopId).toString()
+      }));
+
+    res.json({ 
+      success: true, 
+      data: {
+        cashier: {
+          id: cashier._id,
+          name: cashier.name,
+          email: cashier.email
+        },
+        assignedShops,
+        primaryShop: cashier.shopId ? {
+          shopId: cashier.shopId._id,
+          shopName: cashier.shopId.name,
+          shopLocation: cashier.shopId.location
+        } : null,
+        totalShops: assignedShops.length
+      }
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to update cashier', error: error.message });
+    console.error('Error fetching cashier shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch cashier shops', 
+      error: error.message 
+    });
   }
 });
 
-app.delete('/api/cashiers/:id', async (req, res) => {
+// Set primary shop for a cashier
+app.put('/api/cashiers/:id/primary-shop', authMiddleware, async (req, res) => {
   try {
-    const cashier = await models.Cashier.findByIdAndDelete(req.params.id);
-    if (!cashier) return res.status(404).json({ success: false, message: 'Cashier not found' });
-    res.json({ success: true, message: 'Cashier deleted successfully' });
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required' 
+      });
+    }
+
+    const { id } = req.params;
+    const { shopId } = req.body;
+
+    if (!shopId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Shop ID is required' 
+      });
+    }
+
+    const cashier = await models.Cashier.findById(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    // Verify shop exists and is assigned to cashier
+    const isAssigned = (cashier.assignedShops || []).some(
+      a => a.shopId && a.shopId.toString() === shopId && a.isActive !== false
+    );
+
+    if (!isAssigned) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Shop is not assigned to this cashier' 
+      });
+    }
+
+    const shop = await models.Shop.findById(shopId);
+    if (!shop) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Shop not found' 
+      });
+    }
+
+    // Update primary shop
+    cashier.shopId = shop._id;
+    cashier.shopName = shop.name;
+    cashier.updatedAt = new Date();
+
+    // Add to history
+    if (!cashier.shopAssignmentHistory) {
+      cashier.shopAssignmentHistory = [];
+    }
+    cashier.shopAssignmentHistory.push({
+      shopId: shop._id,
+      shopName: shop.name,
+      action: 'changed',
+      changedBy: req.user._id,
+      changedByName: req.user.name || 'Admin',
+      timestamp: new Date(),
+      notes: `Primary shop set to: ${shop.name}`
+    });
+
+    await cashier.save();
+
+    res.json({ 
+      success: true, 
+      data: {
+        primaryShop: {
+          shopId: shop._id,
+          shopName: shop.name,
+          shopLocation: shop.location
+        }
+      },
+      message: `Primary shop updated to ${shop.name}` 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to delete cashier', error: error.message });
+    console.error('Error setting primary shop:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to set primary shop', 
+      error: error.message 
+    });
+  }
+});
+
+// Get all shops with assignment status for a cashier
+app.get('/api/cashiers/:id/available-shops', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required' 
+      });
+    }
+
+    const [cashier, allShops] = await Promise.all([
+      models.Cashier.findById(id),
+      models.Shop.find({ status: 'active' }).select('name location status type')
+    ]);
+
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    // Get assigned shop IDs
+    const assignedShopIds = (cashier.assignedShops || [])
+      .filter(a => a.isActive !== false)
+      .map(a => a.shopId.toString());
+
+    // Map shops with assignment status
+    const shopsWithStatus = allShops.map(shop => ({
+      ...shop.toObject(),
+      isAssigned: assignedShopIds.includes(shop._id.toString()),
+      isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
+    }));
+
+    res.json({ 
+      success: true, 
+      data: {
+        cashier: {
+          id: cashier._id,
+          name: cashier.name,
+          email: cashier.email
+        },
+        shops: shopsWithStatus,
+        assignedCount: assignedShopIds.length,
+        totalShops: allShops.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching available shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch available shops', 
+      error: error.message 
+    });
   }
 });
 
