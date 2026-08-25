@@ -2216,7 +2216,101 @@ const CalculationUtils = {
     return Object.values(shopMap).map(s => ({ ...s, profitMargin: CalculationUtils.calculateProfitMargin(s.revenue, s.profit) })).sort((a, b) => b.revenue - a.revenue);
   }
 };
-
+// ==================== TRANSACTIONS COMBINED ENDPOINT ====================
+app.get('/api/transactions/combined', authMiddleware, async (req, res) => {
+  try {
+    const { startDate, endDate, shopId } = req.query;
+    
+    // Build filter
+    let filter = { status: 'completed' };
+    if (startDate && endDate) {
+      filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    }
+    if (shopId && shopId !== 'all') {
+      filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    }
+    
+    // Fetch data
+    const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
+      models.Transaction.find(filter)
+        .populate('shop', 'name location')
+        .populate('cashierId', 'name email')
+        .populate('items.productId', 'name buyingPrice')
+        .sort({ saleDate: -1 })
+        .lean()
+        .catch(() => []),
+      models.Shop.find().lean().catch(() => []),
+      models.Cashier.find().lean().catch(() => []),
+      models.Product.find().lean().catch(() => []),
+      models.Expense.find().lean().catch(() => []),
+      models.Credit.find().lean().catch(() => [])
+    ]);
+    
+    // Calculate basic stats
+    let totalRevenue = 0;
+    let totalCash = 0;
+    let totalMpesaBank = 0;
+    let totalItemsSold = 0;
+    let totalCost = 0;
+    
+    transactions.forEach(t => {
+      totalRevenue += t.totalAmount || 0;
+      totalItemsSold += t.itemsCount || 0;
+      totalCost += t.cost || 0;
+      if (t.paymentMethod === 'cash') totalCash += t.totalAmount || 0;
+      else if (['mpesa', 'bank'].includes(t.paymentMethod)) totalMpesaBank += t.totalAmount || 0;
+    });
+    
+    const financialStats = {
+      totalRevenue,
+      totalSales: transactions.length,
+      totalTransactions: transactions.length,
+      totalCash,
+      totalMpesaBank,
+      totalItemsSold,
+      costOfGoodsSold: totalCost,
+      grossProfit: totalRevenue - totalCost,
+      netProfit: totalRevenue - totalCost,
+      averageTransactionValue: transactions.length > 0 ? totalRevenue / transactions.length : 0,
+      outstandingCredit: 0,
+      totalExpenses: 0,
+      creditSales: 0,
+      nonCreditSales: transactions.length,
+      profitMargin: totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0,
+      grossProfitMargin: totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0,
+      creditCollectionRate: 0,
+      totalCreditGiven: 0,
+      recognizedCreditRevenue: 0
+    };
+    
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        salesWithProfit: transactions,
+        shops,
+        cashiers,
+        products,
+        expenses,
+        credits,
+        summary: financialStats,
+        financialStats,
+        performance: {
+          topProducts: [],
+          shopPerformance: []
+        },
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in combined endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch combined data',
+      error: error.message
+    });
+  }
+});
 // ==================== TRANSACTION DATA FETCHING ====================
 const getAllTransactionData = async (filters = {}) => {
   try {
