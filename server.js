@@ -2777,6 +2777,8 @@ app.get('/api/credits/stats', async (req, res) => {
 });
 
 // ==================== TRANSACTION ROUTES ====================
+// IMPORTANT: Specific routes (like /metrics) MUST come before dynamic routes (like /:id)
+
 app.get('/api/transactions', async (req, res) => {
   try {
     if (!models.Transaction) models = createModels();
@@ -2807,6 +2809,188 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
+// ==================== TRANSACTION METRICS ROUTE ====================
+// SPECIFIC ROUTE - MUST COME BEFORE /:id
+app.get('/api/transactions/metrics', async (req, res) => {
+  try {
+    console.log('📊 [METRICS] Starting transaction metrics fetch...');
+    
+    if (!models.Transaction) {
+      console.log('📊 [METRICS] Models not initialized, creating...');
+      models = createModels();
+    }
+
+    const { startDate, endDate, shopId } = req.query;
+    console.log('📊 [METRICS] Query params:', { startDate, endDate, shopId });
+    
+    let filter = {};
+    if (startDate && endDate) {
+      filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    }
+    if (shopId && shopId !== 'all') {
+      filter.$or = [{ shop: shopId }, { shopId: shopId }];
+    }
+
+    console.log('📊 [METRICS] Filter:', JSON.stringify(filter));
+
+    let transactions = [];
+    try {
+      transactions = await models.Transaction.find(filter).lean().maxTimeMS(10000);
+      console.log(`📊 [METRICS] Found ${transactions.length} transactions`);
+    } catch (txError) {
+      console.error('❌ [METRICS] Error fetching transactions:', txError);
+      return res.json({
+        success: true,
+        data: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          profitMargin: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0,
+          outstandingCredit: 0,
+          creditCollectionRate: 0,
+          averageTransactionValue: 0
+        }
+      });
+    }
+    
+    if (!transactions || transactions.length === 0) {
+      console.log('📊 [METRICS] No transactions found, returning empty metrics');
+      return res.json({
+        success: true,
+        data: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          profitMargin: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0,
+          outstandingCredit: 0,
+          creditCollectionRate: 0,
+          averageTransactionValue: 0
+        }
+      });
+    }
+    
+    let totalRevenue = 0;
+    let totalCash = 0;
+    let totalMpesaBank = 0;
+    let totalItemsSold = 0;
+    let totalCost = 0;
+    let creditSales = 0;
+    let nonCreditSales = 0;
+    let totalCreditGiven = 0;
+    let recognizedCreditRevenue = 0;
+    let outstandingCredit = 0;
+    let totalTransactions = transactions.length;
+
+    transactions.forEach(t => {
+      const amount = t.totalAmount || 0;
+      totalRevenue += amount;
+      totalItemsSold += t.itemsCount || 0;
+      
+      if (t.cost) {
+        totalCost += t.cost;
+      } else if (t.items && Array.isArray(t.items) && t.items.length > 0) {
+        t.items.forEach(item => {
+          const qty = item.quantity || 1;
+          const price = item.buyingPrice || 0;
+          totalCost += price * qty;
+        });
+      }
+
+      if (t.paymentSplit) {
+        totalCash += t.paymentSplit.cash || 0;
+        totalMpesaBank += t.paymentSplit.bank_mpesa || 0;
+      } else if (t.paymentMethod === 'cash') {
+        totalCash += amount;
+      } else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) {
+        totalMpesaBank += amount;
+      }
+
+      if (t.isCreditTransaction) {
+        creditSales += amount;
+        totalCreditGiven += amount;
+        recognizedCreditRevenue += t.recognizedRevenue || 0;
+        outstandingCredit += t.outstandingRevenue || 0;
+      } else {
+        nonCreditSales += amount;
+      }
+    });
+
+    const grossProfit = totalRevenue - totalCost;
+    const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
+    const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+        totalSales: totalTransactions,
+        totalTransactions: totalTransactions,
+        totalCash: parseFloat(totalCash.toFixed(2)),
+        totalMpesaBank: parseFloat(totalMpesaBank.toFixed(2)),
+        totalItemsSold: totalItemsSold,
+        costOfGoodsSold: parseFloat(totalCost.toFixed(2)),
+        grossProfit: parseFloat(grossProfit.toFixed(2)),
+        netProfit: parseFloat(grossProfit.toFixed(2)),
+        profitMargin: parseFloat(profitMargin.toFixed(2)),
+        creditSales: parseFloat(creditSales.toFixed(2)),
+        nonCreditSales: parseFloat(nonCreditSales.toFixed(2)),
+        totalCreditGiven: parseFloat(totalCreditGiven.toFixed(2)),
+        recognizedCreditRevenue: parseFloat(recognizedCreditRevenue.toFixed(2)),
+        outstandingCredit: parseFloat(outstandingCredit.toFixed(2)),
+        creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
+        averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
+      }
+    });
+  } catch (error) {
+    console.error('❌ [METRICS] Fatal error:', error);
+    res.json({ 
+      success: true, 
+      data: {
+        totalRevenue: 0,
+        totalSales: 0,
+        totalTransactions: 0,
+        totalCash: 0,
+        totalMpesaBank: 0,
+        totalItemsSold: 0,
+        costOfGoodsSold: 0,
+        grossProfit: 0,
+        netProfit: 0,
+        profitMargin: 0,
+        creditSales: 0,
+        nonCreditSales: 0,
+        totalCreditGiven: 0,
+        recognizedCreditRevenue: 0,
+        outstandingCredit: 0,
+        creditCollectionRate: 0,
+        averageTransactionValue: 0
+      }
+    });
+  }
+});
+
+// ==================== TRANSACTION DYNAMIC ROUTE ====================
+// DYNAMIC ROUTE - MUST COME AFTER SPECIFIC ROUTES
 app.get('/api/transactions/:id', async (req, res) => {
   try {
     const transaction = await models.Transaction.findById(req.params.id)
@@ -2855,330 +3039,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting transaction:', error);
     res.status(500).json({ success: false, message: 'Failed to delete transaction', error: error.message });
-  }
-});
-
-// ==================== TRANSACTION METRICS ROUTE - FINAL FIX ====================
-app.get('/api/transactions/metrics', async (req, res) => {
-  try {
-    console.log('📊 [METRICS] Starting transaction metrics fetch...');
-    
-    // Ensure models are initialized
-    if (!models.Transaction) {
-      console.log('📊 [METRICS] Models not initialized, creating...');
-      models = createModels();
-    }
-
-    const { startDate, endDate, shopId } = req.query;
-    console.log('📊 [METRICS] Query params:', { startDate, endDate, shopId });
-    
-    // Build filter
-    let filter = {};
-    if (startDate && endDate) {
-      filter.saleDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
-    }
-    if (shopId && shopId !== 'all') {
-      filter.$or = [{ shop: shopId }, { shopId: shopId }];
-    }
-
-    console.log('📊 [METRICS] Filter:', JSON.stringify(filter));
-
-    // Fetch transactions with error handling
-    let transactions = [];
-    try {
-      transactions = await models.Transaction.find(filter)
-        .lean()
-        .maxTimeMS(10000);
-      console.log(`📊 [METRICS] Found ${transactions.length} transactions`);
-    } catch (txError) {
-      console.error('❌ [METRICS] Error fetching transactions:', txError);
-      // Return empty metrics on error
-      return res.json({
-        success: true,
-        data: {
-          totalRevenue: 0,
-          totalSales: 0,
-          totalTransactions: 0,
-          totalCash: 0,
-          totalMpesaBank: 0,
-          totalItemsSold: 0,
-          costOfGoodsSold: 0,
-          grossProfit: 0,
-          netProfit: 0,
-          profitMargin: 0,
-          creditSales: 0,
-          nonCreditSales: 0,
-          totalCreditGiven: 0,
-          recognizedCreditRevenue: 0,
-          outstandingCredit: 0,
-          creditCollectionRate: 0,
-          averageTransactionValue: 0
-        }
-      });
-    }
-    
-    // If no transactions, return empty metrics
-    if (!transactions || transactions.length === 0) {
-      console.log('📊 [METRICS] No transactions found, returning empty metrics');
-      return res.json({
-        success: true,
-        data: {
-          totalRevenue: 0,
-          totalSales: 0,
-          totalTransactions: 0,
-          totalCash: 0,
-          totalMpesaBank: 0,
-          totalItemsSold: 0,
-          costOfGoodsSold: 0,
-          grossProfit: 0,
-          netProfit: 0,
-          profitMargin: 0,
-          creditSales: 0,
-          nonCreditSales: 0,
-          totalCreditGiven: 0,
-          recognizedCreditRevenue: 0,
-          outstandingCredit: 0,
-          creditCollectionRate: 0,
-          averageTransactionValue: 0
-        }
-      });
-    }
-    
-    // Calculate metrics
-    let totalRevenue = 0;
-    let totalCash = 0;
-    let totalMpesaBank = 0;
-    let totalItemsSold = 0;
-    let totalCost = 0;
-    let creditSales = 0;
-    let nonCreditSales = 0;
-    let totalCreditGiven = 0;
-    let recognizedCreditRevenue = 0;
-    let outstandingCredit = 0;
-    let totalTransactions = transactions.length;
-
-    transactions.forEach(t => {
-      const amount = t.totalAmount || 0;
-      totalRevenue += amount;
-      totalItemsSold += t.itemsCount || 0;
-      
-      // Calculate cost
-      if (t.cost) {
-        totalCost += t.cost;
-      } else if (t.items && Array.isArray(t.items) && t.items.length > 0) {
-        t.items.forEach(item => {
-          const qty = item.quantity || 1;
-          const price = item.buyingPrice || 0;
-          totalCost += price * qty;
-        });
-      }
-
-      // Payment split
-      if (t.paymentSplit) {
-        totalCash += t.paymentSplit.cash || 0;
-        totalMpesaBank += t.paymentSplit.bank_mpesa || 0;
-      } else if (t.paymentMethod === 'cash') {
-        totalCash += amount;
-      } else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) {
-        totalMpesaBank += amount;
-      }
-
-      // Credit handling
-      if (t.isCreditTransaction) {
-        creditSales += amount;
-        totalCreditGiven += amount;
-        recognizedCreditRevenue += t.recognizedRevenue || 0;
-        outstandingCredit += t.outstandingRevenue || 0;
-      } else {
-        nonCreditSales += amount;
-      }
-    });
-
-    const grossProfit = totalRevenue - totalCost;
-    const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
-    const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-
-    // Return success response
-    res.json({
-      success: true,
-      data: {
-        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-        totalSales: totalTransactions,
-        totalTransactions: totalTransactions,
-        totalCash: parseFloat(totalCash.toFixed(2)),
-        totalMpesaBank: parseFloat(totalMpesaBank.toFixed(2)),
-        totalItemsSold: totalItemsSold,
-        costOfGoodsSold: parseFloat(totalCost.toFixed(2)),
-        grossProfit: parseFloat(grossProfit.toFixed(2)),
-        netProfit: parseFloat(grossProfit.toFixed(2)),
-        profitMargin: parseFloat(profitMargin.toFixed(2)),
-        creditSales: parseFloat(creditSales.toFixed(2)),
-        nonCreditSales: parseFloat(nonCreditSales.toFixed(2)),
-        totalCreditGiven: parseFloat(totalCreditGiven.toFixed(2)),
-        recognizedCreditRevenue: parseFloat(recognizedCreditRevenue.toFixed(2)),
-        outstandingCredit: parseFloat(outstandingCredit.toFixed(2)),
-        creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
-        averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
-      }
-    });
-  } catch (error) {
-    console.error('❌ [METRICS] Fatal error:', error);
-    // ALWAYS return a valid response even on error
-    res.json({ 
-      success: true, 
-      data: {
-        totalRevenue: 0,
-        totalSales: 0,
-        totalTransactions: 0,
-        totalCash: 0,
-        totalMpesaBank: 0,
-        totalItemsSold: 0,
-        costOfGoodsSold: 0,
-        grossProfit: 0,
-        netProfit: 0,
-        profitMargin: 0,
-        creditSales: 0,
-        nonCreditSales: 0,
-        totalCreditGiven: 0,
-        recognizedCreditRevenue: 0,
-        outstandingCredit: 0,
-        creditCollectionRate: 0,
-        averageTransactionValue: 0
-      }
-    });
-  }
-});
-    // If no transactions, return empty metrics
-    if (!transactions || transactions.length === 0) {
-      console.log('📊 [METRICS] No transactions found, returning empty metrics');
-      return res.json({
-        success: true,
-        data: {
-          totalRevenue: 0,
-          totalSales: 0,
-          totalTransactions: 0,
-          totalCash: 0,
-          totalMpesaBank: 0,
-          totalItemsSold: 0,
-          costOfGoodsSold: 0,
-          grossProfit: 0,
-          netProfit: 0,
-          profitMargin: 0,
-          creditSales: 0,
-          nonCreditSales: 0,
-          totalCreditGiven: 0,
-          recognizedCreditRevenue: 0,
-          outstandingCredit: 0,
-          creditCollectionRate: 0,
-          averageTransactionValue: 0
-        }
-      });
-    }
-    
-    // Calculate metrics
-    let totalRevenue = 0;
-    let totalCash = 0;
-    let totalMpesaBank = 0;
-    let totalItemsSold = 0;
-    let totalCost = 0;
-    let creditSales = 0;
-    let nonCreditSales = 0;
-    let totalCreditGiven = 0;
-    let recognizedCreditRevenue = 0;
-    let outstandingCredit = 0;
-    let totalTransactions = transactions.length;
-
-    transactions.forEach(t => {
-      const amount = t.totalAmount || 0;
-      totalRevenue += amount;
-      totalItemsSold += t.itemsCount || 0;
-      
-      // Calculate cost
-      if (t.cost) {
-        totalCost += t.cost;
-      } else if (t.items && Array.isArray(t.items) && t.items.length > 0) {
-        t.items.forEach(item => {
-          const qty = item.quantity || 1;
-          const price = item.buyingPrice || 0;
-          totalCost += price * qty;
-        });
-      }
-
-      // Payment split
-      if (t.paymentSplit) {
-        totalCash += t.paymentSplit.cash || 0;
-        totalMpesaBank += t.paymentSplit.bank_mpesa || 0;
-      } else if (t.paymentMethod === 'cash') {
-        totalCash += amount;
-      } else if (['mpesa', 'bank', 'card'].includes(t.paymentMethod)) {
-        totalMpesaBank += amount;
-      }
-
-      // Credit handling
-      if (t.isCreditTransaction) {
-        creditSales += amount;
-        totalCreditGiven += amount;
-        recognizedCreditRevenue += t.recognizedRevenue || 0;
-        outstandingCredit += t.outstandingRevenue || 0;
-      } else {
-        nonCreditSales += amount;
-      }
-    });
-
-    const grossProfit = totalRevenue - totalCost;
-    const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
-    const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-
-    // Return success response
-    res.json({
-      success: true,
-      data: {
-        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-        totalSales: totalTransactions,
-        totalTransactions: totalTransactions,
-        totalCash: parseFloat(totalCash.toFixed(2)),
-        totalMpesaBank: parseFloat(totalMpesaBank.toFixed(2)),
-        totalItemsSold: totalItemsSold,
-        costOfGoodsSold: parseFloat(totalCost.toFixed(2)),
-        grossProfit: parseFloat(grossProfit.toFixed(2)),
-        netProfit: parseFloat(grossProfit.toFixed(2)),
-        profitMargin: parseFloat(profitMargin.toFixed(2)),
-        creditSales: parseFloat(creditSales.toFixed(2)),
-        nonCreditSales: parseFloat(nonCreditSales.toFixed(2)),
-        totalCreditGiven: parseFloat(totalCreditGiven.toFixed(2)),
-        recognizedCreditRevenue: parseFloat(recognizedCreditRevenue.toFixed(2)),
-        outstandingCredit: parseFloat(outstandingCredit.toFixed(2)),
-        creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
-        averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
-      }
-    });
-  } catch (error) {
-    console.error('❌ [METRICS] Fatal error:', error);
-    // ALWAYS return a valid response even on error
-    res.json({ 
-      success: true, 
-      data: {
-        totalRevenue: 0,
-        totalSales: 0,
-        totalTransactions: 0,
-        totalCash: 0,
-        totalMpesaBank: 0,
-        totalItemsSold: 0,
-        costOfGoodsSold: 0,
-        grossProfit: 0,
-        netProfit: 0,
-        profitMargin: 0,
-        creditSales: 0,
-        nonCreditSales: 0,
-        totalCreditGiven: 0,
-        recognizedCreditRevenue: 0,
-        outstandingCredit: 0,
-        creditCollectionRate: 0,
-        averageTransactionValue: 0
-      }
-    });
   }
 });
 
