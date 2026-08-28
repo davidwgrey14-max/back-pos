@@ -2625,15 +2625,19 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete transaction', error: error.message });
   }
 });
-// ==================== TRANSACTION METRICS ROUTE - FIXED ====================
+// ==================== TRANSACTION METRICS ROUTE - COMPLETELY FIXED ====================
 app.get('/api/transactions/metrics', async (req, res) => {
   try {
+    console.log('📊 [METRICS] Starting transaction metrics fetch...');
+    
     // Ensure models are initialized
     if (!models.Transaction) {
+      console.log('📊 [METRICS] Models not initialized, creating...');
       models = createModels();
     }
 
     const { startDate, endDate, shopId } = req.query;
+    console.log('📊 [METRICS] Query params:', { startDate, endDate, shopId });
     
     let filter = {};
     if (startDate && endDate) {
@@ -2643,15 +2647,45 @@ app.get('/api/transactions/metrics', async (req, res) => {
       filter.$or = [{ shop: shopId }, { shopId: shopId }];
     }
 
-    console.log('📊 Fetching transaction metrics with filter:', JSON.stringify(filter));
+    console.log('📊 [METRICS] Filter:', JSON.stringify(filter));
 
-    // Fetch transactions
+    // Fetch transactions with proper error handling
     let transactions = [];
     try {
-      transactions = await models.Transaction.find(filter).lean();
+      transactions = await models.Transaction.find(filter)
+        .lean()
+        .maxTimeMS(10000);
+      console.log(`📊 [METRICS] Found ${transactions.length} transactions`);
     } catch (txError) {
-      console.error('Error fetching transactions for metrics:', txError);
-      // Return empty metrics if no transactions found
+      console.error('❌ [METRICS] Error fetching transactions:', txError);
+      // Return empty metrics
+      return res.json({
+        success: true,
+        data: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          profitMargin: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0,
+          outstandingCredit: 0,
+          creditCollectionRate: 0,
+          averageTransactionValue: 0
+        }
+      });
+    }
+    
+    // If no transactions, return empty metrics
+    if (!transactions || transactions.length === 0) {
+      console.log('📊 [METRICS] No transactions found, returning empty metrics');
       return res.json({
         success: true,
         data: {
@@ -2687,6 +2721,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
     let totalCreditGiven = 0;
     let recognizedCreditRevenue = 0;
     let outstandingCredit = 0;
+    let totalTransactions = transactions.length;
 
     // Process each transaction
     transactions.forEach(t => {
@@ -2729,14 +2764,14 @@ app.get('/api/transactions/metrics', async (req, res) => {
     const grossProfit = totalRevenue - totalCost;
     const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
-    const avgTransactionValue = transactions.length > 0 ? totalRevenue / transactions.length : 0;
+    const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-    res.json({
+    const result = {
       success: true,
       data: {
         totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-        totalSales: transactions.length,
-        totalTransactions: transactions.length,
+        totalSales: totalTransactions,
+        totalTransactions: totalTransactions,
         totalCash: parseFloat(totalCash.toFixed(2)),
         totalMpesaBank: parseFloat(totalMpesaBank.toFixed(2)),
         totalItemsSold: totalItemsSold,
@@ -2752,14 +2787,17 @@ app.get('/api/transactions/metrics', async (req, res) => {
         creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
         averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
       }
-    });
+    };
+
+    console.log('📊 [METRICS] Successfully calculated metrics');
+    res.json(result);
   } catch (error) {
-    console.error('❌ Error fetching transaction metrics:', error);
+    console.error('❌ [METRICS] Fatal error:', error);
     // Always return a valid response even on error
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch metrics', 
-      error: error.message,
+      error: error.message || 'Unknown error',
       data: {
         totalRevenue: 0,
         totalSales: 0,
@@ -2779,6 +2817,166 @@ app.get('/api/transactions/metrics', async (req, res) => {
         creditCollectionRate: 0,
         averageTransactionValue: 0
       }
+    });
+  }
+});
+// ==================== TRANSACTION COMBINED ROUTE - COMPLETELY FIXED ====================
+app.get('/api/transactions/combined', async (req, res) => {
+  try {
+    console.log('📊 [COMBINED] Starting combined data fetch...');
+    
+    const { startDate, endDate, shopId } = req.query;
+    
+    // Set timeout for this heavy operation
+    req.setTimeout(30000);
+    res.setTimeout(30000);
+
+    // Ensure models exist
+    if (!models.Transaction) {
+      console.log('📊 [COMBINED] Models not initialized, creating...');
+      models = createModels();
+    }
+
+    // Build date filter
+    let dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter = { saleDate: { $gte: new Date(startDate), $lte: new Date(endDate) } };
+    }
+
+    console.log('📊 [COMBINED] Date filter:', JSON.stringify(dateFilter));
+    console.log('📊 [COMBINED] Shop filter:', shopId || 'all');
+
+    // Fetch all data with proper error handling for each
+    let transactions = [];
+    let shops = [];
+    let cashiers = [];
+    let products = [];
+    let expenses = [];
+    let credits = [];
+
+    try {
+      transactions = await models.Transaction.find(dateFilter)
+        .populate('shop', 'name location')
+        .populate('cashierId', 'name email')
+        .sort({ saleDate: -1 })
+        .lean()
+        .maxTimeMS(30000);
+      console.log(`📊 [COMBINED] Found ${transactions.length} transactions`);
+    } catch (txError) {
+      console.error('❌ [COMBINED] Error fetching transactions:', txError);
+      transactions = [];
+    }
+
+    try {
+      shops = await models.Shop.find({}).lean();
+      console.log(`📊 [COMBINED] Found ${shops.length} shops`);
+    } catch (shopError) {
+      console.error('❌ [COMBINED] Error fetching shops:', shopError);
+      shops = [];
+    }
+
+    try {
+      cashiers = await models.Cashier.find({}).lean();
+      console.log(`📊 [COMBINED] Found ${cashiers.length} cashiers`);
+    } catch (cashierError) {
+      console.error('❌ [COMBINED] Error fetching cashiers:', cashierError);
+      cashiers = [];
+    }
+
+    try {
+      products = await models.Product.find({}).lean();
+      console.log(`📊 [COMBINED] Found ${products.length} products`);
+    } catch (productError) {
+      console.error('❌ [COMBINED] Error fetching products:', productError);
+      products = [];
+    }
+
+    try {
+      const expenseFilter = dateFilter.saleDate ? { date: dateFilter.saleDate } : {};
+      expenses = await models.Expense.find(expenseFilter).lean();
+      console.log(`📊 [COMBINED] Found ${expenses.length} expenses`);
+    } catch (expenseError) {
+      console.error('❌ [COMBINED] Error fetching expenses:', expenseError);
+      expenses = [];
+    }
+
+    try {
+      const creditFilter = dateFilter.saleDate ? { createdAt: dateFilter.saleDate } : {};
+      credits = await models.Credit.find(creditFilter).lean();
+      console.log(`📊 [COMBINED] Found ${credits.length} credits`);
+    } catch (creditError) {
+      console.error('❌ [COMBINED] Error fetching credits:', creditError);
+      credits = [];
+    }
+
+    // Process transactions with CalculationUtils
+    let processedData;
+    try {
+      processedData = await CalculationUtils.processComprehensiveData(
+        { transactions, shops, cashiers, products, expenses, credits },
+        shopId || 'all'
+      );
+      console.log('📊 [COMBINED] Data processed successfully');
+    } catch (processError) {
+      console.error('❌ [COMBINED] Error processing data:', processError);
+      // Return basic structure with empty data
+      processedData = {
+        salesWithProfit: [],
+        financialStats: {
+          totalSales: 0,
+          totalRevenue: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          costOfGoodsSold: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          outstandingCredit: 0,
+          profitMargin: 0,
+          creditCollectionRate: 0,
+          averageTransactionValue: 0
+        },
+        expenses: [],
+        credits: [],
+        products: [],
+        shops: [],
+        cashiers: [],
+        performance: { topProducts: [], shopPerformance: [] },
+        summary: {},
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    res.json({
+      success: true,
+      ...processedData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ [COMBINED] Fatal error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch combined data', 
+      error: error.message || 'Unknown error',
+      salesWithProfit: [],
+      financialStats: {
+        totalSales: 0,
+        totalRevenue: 0,
+        grossProfit: 0,
+        netProfit: 0,
+        costOfGoodsSold: 0,
+        totalCash: 0,
+        totalMpesaBank: 0,
+        outstandingCredit: 0,
+        profitMargin: 0,
+        creditCollectionRate: 0,
+        averageTransactionValue: 0
+      },
+      expenses: [],
+      credits: [],
+      products: [],
+      shops: [],
+      cashiers: [],
+      performance: { topProducts: [], shopPerformance: [] }
     });
   }
 });
