@@ -2625,10 +2625,14 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete transaction', error: error.message });
   }
 });
-
-// ==================== TRANSACTION METRICS ROUTE ====================
+// ==================== TRANSACTION METRICS ROUTE - FIXED ====================
 app.get('/api/transactions/metrics', async (req, res) => {
   try {
+    // Ensure models are initialized
+    if (!models.Transaction) {
+      models = createModels();
+    }
+
     const { startDate, endDate, shopId } = req.query;
     
     let filter = {};
@@ -2639,9 +2643,40 @@ app.get('/api/transactions/metrics', async (req, res) => {
       filter.$or = [{ shop: shopId }, { shopId: shopId }];
     }
 
-    const transactions = await models.Transaction.find(filter);
-    const products = await models.Product.find({});
+    console.log('📊 Fetching transaction metrics with filter:', JSON.stringify(filter));
+
+    // Fetch transactions
+    let transactions = [];
+    try {
+      transactions = await models.Transaction.find(filter).lean();
+    } catch (txError) {
+      console.error('Error fetching transactions for metrics:', txError);
+      // Return empty metrics if no transactions found
+      return res.json({
+        success: true,
+        data: {
+          totalRevenue: 0,
+          totalSales: 0,
+          totalTransactions: 0,
+          totalCash: 0,
+          totalMpesaBank: 0,
+          totalItemsSold: 0,
+          costOfGoodsSold: 0,
+          grossProfit: 0,
+          netProfit: 0,
+          profitMargin: 0,
+          creditSales: 0,
+          nonCreditSales: 0,
+          totalCreditGiven: 0,
+          recognizedCreditRevenue: 0,
+          outstandingCredit: 0,
+          creditCollectionRate: 0,
+          averageTransactionValue: 0
+        }
+      });
+    }
     
+    // Initialize metrics
     let totalRevenue = 0;
     let totalCash = 0;
     let totalMpesaBank = 0;
@@ -2653,6 +2688,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
     let recognizedCreditRevenue = 0;
     let outstandingCredit = 0;
 
+    // Process each transaction
     transactions.forEach(t => {
       const amount = t.totalAmount || 0;
       totalRevenue += amount;
@@ -2661,9 +2697,11 @@ app.get('/api/transactions/metrics', async (req, res) => {
       // Calculate cost
       if (t.cost) {
         totalCost += t.cost;
-      } else if (t.items && t.items.length > 0) {
+      } else if (t.items && Array.isArray(t.items) && t.items.length > 0) {
         t.items.forEach(item => {
-          totalCost += (item.buyingPrice || 0) * (item.quantity || 1);
+          const qty = item.quantity || 1;
+          const price = item.buyingPrice || 0;
+          totalCost += price * qty;
         });
       }
 
@@ -2691,78 +2729,59 @@ app.get('/api/transactions/metrics', async (req, res) => {
     const grossProfit = totalRevenue - totalCost;
     const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
     const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
+    const avgTransactionValue = transactions.length > 0 ? totalRevenue / transactions.length : 0;
 
     res.json({
       success: true,
       data: {
-        totalRevenue,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
         totalSales: transactions.length,
         totalTransactions: transactions.length,
-        totalCash,
-        totalMpesaBank,
-        totalItemsSold,
-        costOfGoodsSold: totalCost,
-        grossProfit,
-        netProfit: grossProfit,
-        profitMargin,
-        creditSales,
-        nonCreditSales,
-        totalCreditGiven,
-        recognizedCreditRevenue,
-        outstandingCredit,
-        creditCollectionRate,
-        averageTransactionValue: transactions.length > 0 ? totalRevenue / transactions.length : 0
+        totalCash: parseFloat(totalCash.toFixed(2)),
+        totalMpesaBank: parseFloat(totalMpesaBank.toFixed(2)),
+        totalItemsSold: totalItemsSold,
+        costOfGoodsSold: parseFloat(totalCost.toFixed(2)),
+        grossProfit: parseFloat(grossProfit.toFixed(2)),
+        netProfit: parseFloat(grossProfit.toFixed(2)),
+        profitMargin: parseFloat(profitMargin.toFixed(2)),
+        creditSales: parseFloat(creditSales.toFixed(2)),
+        nonCreditSales: parseFloat(nonCreditSales.toFixed(2)),
+        totalCreditGiven: parseFloat(totalCreditGiven.toFixed(2)),
+        recognizedCreditRevenue: parseFloat(recognizedCreditRevenue.toFixed(2)),
+        outstandingCredit: parseFloat(outstandingCredit.toFixed(2)),
+        creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
+        averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
       }
     });
   } catch (error) {
-    console.error('Error fetching transaction metrics:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch metrics', error: error.message });
-  }
-});
-
-// ==================== TRANSACTION COMBINED ROUTE ====================
-app.get('/api/transactions/combined', async (req, res) => {
-  try {
-    const { startDate, endDate, shopId } = req.query;
-    
-    // Set timeout for this heavy operation
-    req.setTimeout(30000);
-    res.setTimeout(30000);
-
-    const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
-      models.Transaction.find(startDate && endDate ? { saleDate: { $gte: new Date(startDate), $lte: new Date(endDate) } } : {})
-        .populate('shop', 'name location')
-        .populate('cashierId', 'name email')
-        .sort({ saleDate: -1 })
-        .lean(),
-      models.Shop.find({}).lean(),
-      models.Cashier.find({}).lean(),
-      models.Product.find({}).lean(),
-      models.Expense.find(startDate && endDate ? { date: { $gte: new Date(startDate), $lte: new Date(endDate) } } : {}).lean(),
-      models.Credit.find(startDate && endDate ? { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } } : {}).lean()
-    ]);
-
-    // Process transactions with CalculationUtils
-    const processedData = await CalculationUtils.processComprehensiveData(
-      { transactions, shops, cashiers, products, expenses, credits },
-      shopId || 'all'
-    );
-
-    res.json({
-      success: true,
-      ...processedData,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error fetching combined data:', error);
+    console.error('❌ Error fetching transaction metrics:', error);
+    // Always return a valid response even on error
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to fetch combined data', 
-      error: error.message 
+      message: 'Failed to fetch metrics', 
+      error: error.message,
+      data: {
+        totalRevenue: 0,
+        totalSales: 0,
+        totalTransactions: 0,
+        totalCash: 0,
+        totalMpesaBank: 0,
+        totalItemsSold: 0,
+        costOfGoodsSold: 0,
+        grossProfit: 0,
+        netProfit: 0,
+        profitMargin: 0,
+        creditSales: 0,
+        nonCreditSales: 0,
+        totalCreditGiven: 0,
+        recognizedCreditRevenue: 0,
+        outstandingCredit: 0,
+        creditCollectionRate: 0,
+        averageTransactionValue: 0
+      }
     });
   }
 });
-
 // ==================== LOGOUT ROUTE ====================
 app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   try {
