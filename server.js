@@ -538,634 +538,6 @@ models.Session = Session;
 models.VerificationRequest = VerificationRequest;
 models.LoginHistory = LoginHistory;
 
-// ==================== ENHANCED EMAIL TEMPLATES ====================
-
-// Generate bear ASCII art for emails
-const getBearArt = () => {
-  return `
-  ╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮
-  ┃  🐻  BEAR SECURE CODE  🐻  ┃
-  ╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
-  `;
-};
-
-// Enhanced Secure Code Email Template with Animation & Bear Theme
-const generateSecureCodeEmailHTML = (code, expiresIn = 15, appName = 'Shop Management') => {
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔐 Your Secure Code</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap');
-      
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      
-      body {
-        font-family: 'Poppins', Arial, sans-serif;
-        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-      }
-      
-      .email-container {
-        max-width: 580px;
-        width: 100%;
-        background: #ffffff;
-        border-radius: 24px;
-        overflow: hidden;
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-        animation: floatIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        transform: translateY(30px);
-        opacity: 0;
-      }
-      
-      @keyframes floatIn {
-        0% {
-          transform: translateY(30px) scale(0.95);
-          opacity: 0;
-        }
-        100% {
-          transform: translateY(0) scale(1);
-          opacity: 1;
-        }
-      }
-      
-      @keyframes pulse {
-        0%, 100% {
-          transform: scale(1);
-        }
-        50% {
-          transform: scale(1.05);
-        }
-      }
-      
-      @keyframes shimmer {
-        0% {
-          background-position: -200% center;
-        }
-        100% {
-          background-position: 200% center;
-        }
-      }
-      
-      @keyframes bearWave {
-        0%, 100% {
-          transform: rotate(0deg);
-        }
-        25% {
-          transform: rotate(5deg);
-        }
-        75% {
-          transform: rotate(-5deg);
-        }
-      }
-      
-      @keyframes sparkle {
-        0%, 100% {
-          opacity: 1;
-          transform: scale(1);
-        }
-        50% {
-          opacity: 0.5;
-          transform: scale(1.2);
-        }
-      }
-      
-      @keyframes countdown {
-        0% {
-          stroke-dashoffset: 100;
-        }
-        100% {
-          stroke-dashoffset: 0;
-        }
-      }
-      
-      .email-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 35px 30px 25px;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-      }
-      
-      .email-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle at center, rgba(255,255,255,0.1) 0%, transparent 70%);
-        animation: shimmer 4s ease-in-out infinite;
-        background-size: 200% 200%;
-      }
-      
-      .bear-icon {
-        font-size: 52px;
-        display: inline-block;
-        animation: bearWave 2s ease-in-out infinite;
-        position: relative;
-        z-index: 1;
-      }
-      
-      .header-title {
-        color: #ffffff;
-        font-size: 24px;
-        font-weight: 700;
-        margin-top: 8px;
-        position: relative;
-        z-index: 1;
-        letter-spacing: 0.5px;
-      }
-      
-      .header-subtitle {
-        color: rgba(255,255,255,0.85);
-        font-size: 14px;
-        font-weight: 300;
-        margin-top: 4px;
-        position: relative;
-        z-index: 1;
-      }
-      
-      .header-badge {
-        display: inline-block;
-        background: rgba(255,255,255,0.2);
-        backdrop-filter: blur(10px);
-        padding: 4px 16px;
-        border-radius: 20px;
-        color: white;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        margin-top: 8px;
-        position: relative;
-        z-index: 1;
-        border: 1px solid rgba(255,255,255,0.15);
-      }
-      
-      .email-body {
-        padding: 35px 30px 30px;
-        background: #ffffff;
-      }
-      
-      .greeting {
-        font-size: 18px;
-        font-weight: 600;
-        color: #2d3748;
-        margin-bottom: 6px;
-      }
-      
-      .greeting-text {
-        color: #4a5568;
-        font-size: 14px;
-        line-height: 1.7;
-        margin-bottom: 24px;
-      }
-      
-      .code-container {
-        background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-        border-radius: 16px;
-        padding: 30px 20px 25px;
-        text-align: center;
-        border: 2px dashed #cbd5e0;
-        position: relative;
-        margin-bottom: 24px;
-        transition: all 0.3s ease;
-      }
-      
-      .code-container:hover {
-        border-color: #667eea;
-        box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
-      }
-      
-      .code-label {
-        font-size: 12px;
-        font-weight: 600;
-        color: #a0aec0;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-      }
-      
-      .code-value {
-        font-size: 48px;
-        font-weight: 800;
-        color: #2d3748;
-        letter-spacing: 8px;
-        margin: 8px 0 4px;
-        font-family: 'Courier New', monospace;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: pulse 2s ease-in-out infinite;
-      }
-      
-      .code-expiry {
-        font-size: 13px;
-        color: #718096;
-        margin-top: 8px;
-      }
-      
-      .code-expiry strong {
-        color: #e53e3e;
-        font-weight: 600;
-      }
-      
-      .timer-ring {
-        display: inline-block;
-        width: 60px;
-        height: 60px;
-        margin-top: 12px;
-        position: relative;
-      }
-      
-      .timer-ring svg {
-        transform: rotate(-90deg);
-      }
-      
-      .timer-ring .bg {
-        fill: none;
-        stroke: #e2e8f0;
-        stroke-width: 4;
-      }
-      
-      .timer-ring .progress {
-        fill: none;
-        stroke: #667eea;
-        stroke-width: 4;
-        stroke-linecap: round;
-        stroke-dasharray: 100;
-        stroke-dashoffset: 0;
-        animation: countdown ${expiresIn * 60}s linear forwards;
-      }
-      
-      .timer-text {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 14px;
-        font-weight: 700;
-        color: #2d3748;
-      }
-      
-      .features-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin: 20px 0 24px;
-      }
-      
-      .feature-item {
-        background: #f7fafc;
-        border-radius: 10px;
-        padding: 12px 14px;
-        text-align: center;
-        transition: all 0.2s ease;
-        border: 1px solid transparent;
-      }
-      
-      .feature-item:hover {
-        border-color: #667eea;
-        background: #f0f4ff;
-      }
-      
-      .feature-icon {
-        font-size: 20px;
-        display: block;
-        margin-bottom: 2px;
-      }
-      
-      .feature-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: #4a5568;
-      }
-      
-      .feature-value {
-        font-size: 11px;
-        color: #718096;
-      }
-      
-      .security-notice {
-        background: linear-gradient(135deg, #fff5f5 0%, #fef5e7 100%);
-        border-radius: 12px;
-        padding: 16px 20px;
-        border-left: 4px solid #e53e3e;
-        margin-bottom: 24px;
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-      }
-      
-      .security-icon {
-        font-size: 20px;
-        flex-shrink: 0;
-        margin-top: 2px;
-      }
-      
-      .security-text {
-        font-size: 12px;
-        color: #4a5568;
-        line-height: 1.6;
-      }
-      
-      .security-text strong {
-        color: #e53e3e;
-      }
-      
-      .divider {
-        border: none;
-        height: 1px;
-        background: linear-gradient(to right, transparent, #e2e8f0, transparent);
-        margin: 20px 0;
-      }
-      
-      .footer {
-        padding: 20px 30px 25px;
-        background: #f7fafc;
-        text-align: center;
-        border-top: 1px solid #e2e8f0;
-      }
-      
-      .footer-text {
-        font-size: 12px;
-        color: #a0aec0;
-        line-height: 1.8;
-      }
-      
-      .footer-text strong {
-        color: #4a5568;
-      }
-      
-      .footer-logo {
-        font-size: 13px;
-        font-weight: 700;
-        color: #2d3748;
-        margin-bottom: 4px;
-      }
-      
-      .footer-logo span {
-        color: #667eea;
-      }
-      
-      @media (max-width: 480px) {
-        .email-body {
-          padding: 25px 16px 20px;
-        }
-        .code-value {
-          font-size: 34px;
-          letter-spacing: 6px;
-        }
-        .features-grid {
-          grid-template-columns: 1fr 1fr;
-          gap: 8px;
-        }
-        .header-title {
-          font-size: 20px;
-        }
-        .bear-icon {
-          font-size: 40px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="email-container">
-      <!-- HEADER -->
-      <div class="email-header">
-        <div class="bear-icon">🐻</div>
-        <div class="header-title">🔐 Your Secure Code</div>
-        <div class="header-subtitle">${appName} • Secure Login Verification</div>
-        <div class="header-badge">✦ SECURE CODE ✦</div>
-      </div>
-      
-      <!-- BODY -->
-      <div class="email-body">
-        <div class="greeting">Hello, <span style="color: #667eea;">Valued User</span> 👋</div>
-        <p class="greeting-text">
-          You've requested a secure login code for <strong>${appName}</strong>. 
-          Please use the code below to complete your authentication.
-        </p>
-        
-        <!-- CODE -->
-        <div class="code-container">
-          <div class="code-label">✦ Your Secure Code ✦</div>
-          <div class="code-value">${code}</div>
-          <div class="code-expiry">
-            ⏰ This code expires in <strong>${expiresIn} minutes</strong>
-          </div>
-          
-          <!-- Timer Animation -->
-          <div class="timer-ring">
-            <svg viewBox="0 0 60 60">
-              <circle class="bg" cx="30" cy="30" r="26" />
-              <circle class="progress" cx="30" cy="30" r="26" />
-            </svg>
-            <div class="timer-text">${expiresIn}m</div>
-          </div>
-        </div>
-        
-        <!-- Features -->
-        <div class="features-grid">
-          <div class="feature-item">
-            <span class="feature-icon">🔒</span>
-            <div class="feature-label">One-Time Use</div>
-            <div class="feature-value">Single use only</div>
-          </div>
-          <div class="feature-item">
-            <span class="feature-icon">⏰</span>
-            <div class="feature-label">Time Limited</div>
-            <div class="feature-value">${expiresIn} min expiry</div>
-          </div>
-          <div class="feature-item">
-            <span class="feature-icon">🛡️</span>
-            <div class="feature-label">Secure</div>
-            <div class="feature-value">Encrypted</div>
-          </div>
-          <div class="feature-item">
-            <span class="feature-icon">🐻</span>
-            <div class="feature-label">Bear Protected</div>
-            <div class="feature-value">Safe & secure</div>
-          </div>
-        </div>
-        
-        <!-- Security Notice -->
-        <div class="security-notice">
-          <span class="security-icon">⚠️</span>
-          <div class="security-text">
-            <strong>Security Alert:</strong> Never share this code with anyone. 
-            Our team will never ask for your code. If you didn't request this, 
-            please ignore this email.
-          </div>
-        </div>
-        
-        <hr class="divider" />
-        
-        <div style="text-align: center; font-size: 13px; color: #718096;">
-          <span style="display: inline-block; background: #f0f4ff; padding: 4px 12px; border-radius: 12px; font-weight: 600; color: #667eea;">
-            🐻 Bear Secure Code System v2.0
-          </span>
-        </div>
-      </div>
-      
-      <!-- FOOTER -->
-      <div class="footer">
-        <div class="footer-logo">🐻 <span>${appName}</span></div>
-        <div class="footer-text">
-          This is an automated message, please do not reply.<br />
-          &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
-        </div>
-      </div>
-    </div>
-  </body>
-  </html>
-  `;
-};
-
-// ==================== STOCK MONITORING SYSTEM ====================
-const sendStockAlertEmail = async (products, alertType) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) {
-        console.log('⚠️ Email service not configured - skipping stock alert');
-        return false;
-      }
-    }
-
-    const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
-    const subject = alertType === 'out_of_stock'
-      ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
-      : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
-
-    const productList = products.map(product => `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.name}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.category || 'Uncategorized'}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.currentStock}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.minStockLevel || 5}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${product.shopName || 'Unknown Shop'}</td>
-      </tr>
-    `).join('');
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-        <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0;">${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}</h1>
-        </div>
-        <div style="padding: 20px; background: #f9f9f9;">
-          <p>Dear Administrator,</p>
-          <p>${alertType === 'out_of_stock'
-            ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>.`
-            : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>.`}
-          </p>
-          <div style="margin: 20px 0;">
-            <table style="width: 100%; border-collapse: collapse; background: white;">
-              <thead>
-                <tr style="background: #333; color: white;">
-                  <th style="padding: 12px; border: 1px solid #ddd;">Product</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">Category</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Stock</th>
-                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min</th>
-                  <th style="padding: 12px; border: 1px solid #ddd;">Shop</th>
-                </tr>
-              </thead>
-              <tbody>${productList}</tbody>
-            </table>
-          </div>
-          <p><strong>Action Required:</strong> Please log in and update stock levels.</p>
-        </div>
-      </div>
-    `;
-
-    await emailTransporter.sendMail({
-      from: `"Inventory Alert" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
-      to: adminEmail,
-      subject: subject,
-      html: html,
-      priority: 'high'
-    });
-    console.log(`✅ ${alertType} alert sent for ${products.length} products`);
-    return true;
-  } catch (error) {
-    console.error('❌ Error sending stock alert email:', error);
-    return false;
-  }
-};
-
-const checkStockLevels = async () => {
-  try {
-    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
-    if (!models.Product) {
-      models = createModels();
-    }
-
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location')
-      .lean();
-
-    const outOfStockProducts = [];
-    const lowStockProducts = [];
-
-    products.forEach(product => {
-      const currentStock = product.currentStock || 0;
-      const minStockLevel = product.minStockLevel || 5;
-
-      if (currentStock === 0) {
-        outOfStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
-      } else if (currentStock <= minStockLevel) {
-        lowStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
-      }
-    });
-
-    if (outOfStockProducts.length > 0) {
-      await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
-    }
-
-    if (lowStockProducts.length > 0) {
-      const now = new Date();
-      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-      const productsToAlert = [];
-
-      for (const product of lowStockProducts) {
-        const dbProduct = await models.Product.findById(product._id);
-        if (!dbProduct) continue;
-
-        const lastAlert = dbProduct.lastStockAlertSent;
-        if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
-          productsToAlert.push(product);
-          dbProduct.lastStockAlertSent = now;
-          await dbProduct.save();
-        }
-      }
-
-      if (productsToAlert.length > 0) {
-        await sendStockAlertEmail(productsToAlert, 'low_stock');
-      }
-    }
-
-    return {
-      outOfStock: outOfStockProducts.length,
-      lowStock: lowStockProducts.length,
-      timestamp: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('❌ [STOCK MONITOR] Error:', error);
-    throw error;
-  }
-};
-
 // ==================== EMAIL FUNCTIONS ====================
 const createEmailTransporter = () => {
   try {
@@ -1212,575 +584,6 @@ const initializeEmail = async () => {
   } catch (error) {
     console.error('❌ Email configuration error:', error.message);
     emailInitialized = false;
-    return false;
-  }
-};
-// ==================== FIXED SECURE CODE EMAIL FUNCTION ====================
-// Send Secure Code Email with Enhanced Template - FIXED
-const sendSecureCodeEmail = async (email, code, expiresIn = 15) => {
-  try {
-    if (!emailTransporter) {
-      await initializeEmail();
-      if (!emailTransporter) throw new Error('Email service not configured');
-    }
-    
-    const appName = process.env.APP_NAME || 'Pamela Management';
-    
-    // SIMPLIFIED HTML - Guaranteed to show the code
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>🔐 Your Secure Login Code</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          background-color: #f4f6f9;
-          margin: 0;
-          padding: 20px;
-        }
-        .container {
-          max-width: 500px;
-          margin: 0 auto;
-          background: #ffffff;
-          border-radius: 16px;
-          padding: 30px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-          text-align: center;
-        }
-        .header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 20px;
-          border-radius: 12px 12px 0 0;
-          margin: -30px -30px 25px -30px;
-        }
-        .header h1 {
-          margin: 0;
-          font-size: 22px;
-        }
-        .header .bear {
-          font-size: 40px;
-          display: block;
-          margin-bottom: 5px;
-        }
-        .code-box {
-          background: #f0f4ff;
-          border: 2px dashed #667eea;
-          border-radius: 12px;
-          padding: 25px 20px;
-          margin: 20px 0;
-        }
-        .code-box .label {
-          font-size: 13px;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-          font-weight: 600;
-        }
-        .code-box .code {
-          font-size: 48px;
-          font-weight: 800;
-          letter-spacing: 12px;
-          color: #4a3f7a;
-          font-family: 'Courier New', monospace;
-          margin: 10px 0;
-          padding: 10px;
-          background: white;
-          border-radius: 8px;
-          display: inline-block;
-          min-width: 200px;
-        }
-        .expiry {
-          color: #6b7280;
-          font-size: 14px;
-          margin-top: 10px;
-        }
-        .expiry strong {
-          color: #e53e3e;
-        }
-        .security-note {
-          background: #fff5f5;
-          border-left: 4px solid #e53e3e;
-          padding: 12px 16px;
-          margin: 20px 0;
-          text-align: left;
-          font-size: 13px;
-          color: #4a5568;
-          border-radius: 4px;
-        }
-        .security-note strong {
-          color: #e53e3e;
-        }
-        .footer {
-          margin-top: 25px;
-          padding-top: 20px;
-          border-top: 1px solid #e5e7eb;
-          font-size: 12px;
-          color: #9ca3af;
-        }
-        .footer strong {
-          color: #4a5568;
-        }
-        .features {
-          display: flex;
-          justify-content: center;
-          gap: 15px;
-          margin: 15px 0;
-          flex-wrap: wrap;
-        }
-        .feature {
-          background: #f9fafb;
-          padding: 8px 16px;
-          border-radius: 20px;
-          font-size: 12px;
-          color: #4a5568;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <span class="bear">🐻</span>
-          <h1>🔐 Your Secure Login Code</h1>
-          <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">${appName}</p>
-        </div>
-        
-        <p style="color: #4a5568; font-size: 16px; margin-bottom: 5px;">
-          Hello <strong>Valued User</strong> 👋
-        </p>
-        <p style="color: #6b7280; font-size: 14px; margin-top: 0;">
-          Use the code below to complete your login to <strong>${appName}</strong>.
-        </p>
-        
-        <!-- CODE BOX - The code is displayed clearly here -->
-        <div class="code-box">
-          <div class="label">✦ Your Secure Code ✦</div>
-          <div class="code">${code}</div>
-          <div class="expiry">⏰ Expires in <strong>${expiresIn} minutes</strong></div>
-        </div>
-        
-        <div class="features">
-          <span class="feature">🔒 One-Time Use</span>
-          <span class="feature">⏰ Time Limited</span>
-          <span class="feature">🛡️ Secure</span>
-        </div>
-        
-        <div class="security-note">
-          <strong>⚠️ Security Alert:</strong> Never share this code with anyone. 
-          Our team will never ask for your code. If you didn't request this, 
-          please ignore this email.
-        </div>
-        
-        <div style="font-size: 13px; color: #667eea; font-weight: 600; margin: 10px 0;">
-          🐻 Bear Secure Code System
-        </div>
-        
-        <div class="footer">
-          <strong>${appName}</strong><br>
-          This is an automated message, please do not reply.<br>
-          &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
-        </div>
-      </div>
-    </body>
-    </html>
-    `;
-    
-    // Plain text fallback (some email clients prefer this)
-    const text = `
-    =========================================
-    🐻 BEAR SECURE CODE SYSTEM 🐻
-    =========================================
-    
-    Hello Valued User,
-    
-    Your secure login code for ${appName} is:
-    
-    🔐 CODE: ${code}
-    
-    This code expires in ${expiresIn} minutes.
-    
-    ⚠️ Never share this code with anyone.
-    
-    =========================================
-    ${appName} - Secure Login Verification
-    =========================================
-    `;
-    
-    // Send the email with both HTML and plain text
-    await emailTransporter.sendMail({
-      from: `"🐻 ${appName} Security" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `🔐 Your Secure Login Code - ${appName}`,
-      text: text,
-      html: html,
-      priority: 'high',
-      headers: {
-        'X-Priority': '1',
-        'X-MSMail-Priority': 'High'
-      }
-    });
-    
-    console.log(`✅ Secure code email sent to ${email} with code: ${code}`);
-    return true;
-  } catch (error) {
-    console.error(`❌ Failed to send secure code to ${email}:`, error.message);
-    throw new Error('Failed to send secure code.');
-  }
-};
-// Send Device Verification Email with Bear Theme
-const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
-  try {
-    if (!emailTransporter) {
-      const initialized = await initializeEmail();
-      if (!initialized || !emailTransporter) {
-        console.error('❌ Email transporter could not be initialized');
-        return false;
-      }
-    }
-
-    let adminEmails = [];
-    try {
-      const admins = await models.User.find({ role: 'admin' }).select('email name');
-      adminEmails = admins.map(a => a.email);
-    } catch (error) {
-      console.error('❌ Error finding admin users:', error);
-    }
-
-    if (adminEmails.length === 0) {
-      adminEmails.push(process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com');
-    }
-
-    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
-      adminEmails.push(user.email);
-    }
-
-    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
-    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
-    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
-    const appName = process.env.APP_NAME || 'Shop Management';
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>🔐 Device Verification Request</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-          
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          
-          body {
-            font-family: 'Poppins', Arial, sans-serif;
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-          }
-          
-          .email-container {
-            max-width: 600px;
-            width: 100%;
-            background: #ffffff;
-            border-radius: 24px;
-            overflow: hidden;
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-            animation: floatIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-            transform: translateY(30px);
-            opacity: 0;
-          }
-          
-          @keyframes floatIn {
-            0% { transform: translateY(30px) scale(0.95); opacity: 0; }
-            100% { transform: translateY(0) scale(1); opacity: 1; }
-          }
-          
-          @keyframes bearWave {
-            0%, 100% { transform: rotate(0deg); }
-            25% { transform: rotate(5deg); }
-            75% { transform: rotate(-5deg); }
-          }
-          
-          .email-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 30px 25px 20px;
-            text-align: center;
-          }
-          
-          .bear-icon {
-            font-size: 48px;
-            display: inline-block;
-            animation: bearWave 2s ease-in-out infinite;
-          }
-          
-          .header-title {
-            color: #ffffff;
-            font-size: 22px;
-            font-weight: 700;
-            margin-top: 6px;
-          }
-          
-          .header-subtitle {
-            color: rgba(255,255,255,0.85);
-            font-size: 13px;
-            font-weight: 300;
-            margin-top: 2px;
-          }
-          
-          .header-badge {
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            backdrop-filter: blur(10px);
-            padding: 3px 14px;
-            border-radius: 20px;
-            color: white;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            margin-top: 6px;
-            border: 1px solid rgba(255,255,255,0.15);
-          }
-          
-          .email-body {
-            padding: 30px 25px 25px;
-          }
-          
-          .greeting {
-            font-size: 17px;
-            font-weight: 600;
-            color: #2d3748;
-            margin-bottom: 4px;
-          }
-          
-          .greeting-text {
-            color: #4a5568;
-            font-size: 14px;
-            line-height: 1.7;
-            margin-bottom: 18px;
-          }
-          
-          .device-card {
-            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-            border-radius: 14px;
-            padding: 18px 20px;
-            margin-bottom: 20px;
-            border: 1px solid #e2e8f0;
-          }
-          
-          .device-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            border-bottom: 1px solid #e8ecf0;
-          }
-          
-          .device-row:last-child {
-            border-bottom: none;
-          }
-          
-          .device-label {
-            font-size: 13px;
-            color: #718096;
-            font-weight: 500;
-          }
-          
-          .device-value {
-            font-size: 13px;
-            color: #2d3748;
-            font-weight: 600;
-          }
-          
-          .actions {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin: 20px 0 10px;
-          }
-          
-          .btn-approve {
-            display: inline-block;
-            background: linear-gradient(135deg, #10B981, #059669);
-            color: white;
-            padding: 14px 35px;
-            text-decoration: none;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 15px;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
-          }
-          
-          .btn-approve:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 35px rgba(16, 185, 129, 0.5);
-          }
-          
-          .btn-reject {
-            display: inline-block;
-            background: linear-gradient(135deg, #EF4444, #DC2626);
-            color: white;
-            padding: 14px 35px;
-            text-decoration: none;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 15px;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
-          }
-          
-          .btn-reject:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 35px rgba(239, 68, 68, 0.5);
-          }
-          
-          .security-notice {
-            background: #fff5f5;
-            border-radius: 10px;
-            padding: 12px 16px;
-            border-left: 4px solid #e53e3e;
-            margin-top: 16px;
-            font-size: 12px;
-            color: #4a5568;
-            line-height: 1.6;
-          }
-          
-          .security-notice strong {
-            color: #e53e3e;
-          }
-          
-          .divider {
-            border: none;
-            height: 1px;
-            background: linear-gradient(to right, transparent, #e2e8f0, transparent);
-            margin: 16px 0;
-          }
-          
-          .footer {
-            padding: 16px 25px 20px;
-            background: #f7fafc;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-          }
-          
-          .footer-text {
-            font-size: 12px;
-            color: #a0aec0;
-            line-height: 1.8;
-          }
-          
-          .footer-logo {
-            font-size: 13px;
-            font-weight: 700;
-            color: #2d3748;
-            margin-bottom: 4px;
-          }
-          
-          .footer-logo span {
-            color: #667eea;
-          }
-          
-          @media (max-width: 480px) {
-            .email-body { padding: 20px 14px 16px; }
-            .btn-approve, .btn-reject { padding: 12px 20px; font-size: 13px; width: 100%; text-align: center; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="email-header">
-            <div class="bear-icon">🐻</div>
-            <div class="header-title">🔐 New Device Verification</div>
-            <div class="header-subtitle">${appName} • Security Alert</div>
-            <div class="header-badge">✦ DEVICE VERIFICATION ✦</div>
-          </div>
-          
-          <div class="email-body">
-            <div class="greeting">Hello, <span style="color: #667eea;">Admin</span> 👋</div>
-            <p class="greeting-text">
-              A user is trying to log in from a new device. Please review the device details below and approve or reject this request.
-            </p>
-            
-            <div class="device-card">
-              <div class="device-row">
-                <span class="device-label">👤 User</span>
-                <span class="device-value">${user.name || 'Unknown User'} (${user.email})</span>
-              </div>
-              <div class="device-row">
-                <span class="device-label">💻 Device</span>
-                <span class="device-value">${device.deviceName || 'Unknown Device'}</span>
-              </div>
-              <div class="device-row">
-                <span class="device-label">🖥️ OS</span>
-                <span class="device-value">${device.os || 'Unknown'} ${device.osVersion || ''}</span>
-              </div>
-              <div class="device-row">
-                <span class="device-label">🌐 Browser</span>
-                <span class="device-value">${device.browser || 'Unknown'} ${device.browserVersion || ''}</span>
-              </div>
-              <div class="device-row">
-                <span class="device-label">📱 MAC Address</span>
-                <span class="device-value" style="font-family: monospace; font-size: 12px;">${device.macAddress || 'Unknown'}</span>
-              </div>
-            </div>
-            
-            <div class="actions">
-              <a href="${approveLink}" class="btn-approve">✅ Approve Device</a>
-              <a href="${rejectLink}" class="btn-reject">❌ Reject Device</a>
-            </div>
-            
-            <div class="security-notice">
-              <strong>⚠️ Security Alert:</strong> Only approve this device if you recognize the user and device details. 
-              If you didn't expect this request, please reject it immediately.
-            </div>
-            
-            <hr class="divider" />
-            
-            <div style="text-align: center; font-size: 12px; color: #718096;">
-              <span style="display: inline-block; background: #f0f4ff; padding: 3px 10px; border-radius: 10px; font-weight: 600; color: #667eea;">
-                🐻 Bear Secure System
-              </span>
-            </div>
-          </div>
-          
-          <div class="footer">
-            <div class="footer-logo">🐻 <span>${appName}</span></div>
-            <div class="footer-text">
-              This is an automated security message.<br />
-              &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    let sentCount = 0;
-    for (const adminEmail of adminEmails) {
-      try {
-        await emailTransporter.sendMail({
-          from: `"🐻 ${appName} Security" <${process.env.EMAIL_USER}>`,
-          to: adminEmail,
-          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
-          html: html,
-          priority: 'high'
-        });
-        sentCount++;
-      } catch (error) {
-        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
-      }
-    }
-
-    return sentCount > 0;
-  } catch (error) {
-    console.error('❌ Error in sendDeviceVerificationEmail:', error);
     return false;
   }
 };
@@ -2217,6 +1020,573 @@ const CalculationUtils = {
   }
 };
 
+// ==================== AUTH FUNCTIONS ====================
+const generateSecureCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const generateAuthToken = (userId, email, role) => {
+  return jwt.sign(
+    { userId: userId.toString(), email, role: role || 'cashier', timestamp: Date.now() },
+    process.env.JWT_SECRET || 'fallback-secret-key-change-in-production',
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+  );
+};
+
+// ==================== STOCK MONITORING FUNCTIONS ====================
+const sendStockAlertEmail = async (products, alertType) => {
+  try {
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) {
+        console.log('⚠️ Email service not configured - skipping stock alert');
+        return false;
+      }
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com';
+    const subject = alertType === 'out_of_stock'
+      ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
+      : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
+
+    const productList = products.map(product => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.category || 'Uncategorized'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.currentStock}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${product.minStockLevel || 5}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${product.shopName || 'Unknown Shop'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+        <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">${alertType === 'out_of_stock' ? '🚨 PRODUCTS OUT OF STOCK' : '⚠️ PRODUCTS LOW IN STOCK'}</h1>
+        </div>
+        <div style="padding: 20px; background: #f9f9f9;">
+          <p>Dear Administrator,</p>
+          <p>${alertType === 'out_of_stock'
+            ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>.`
+            : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>.`}
+          </p>
+          <div style="margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+              <thead>
+                <tr style="background: #333; color: white;">
+                  <th style="padding: 12px; border: 1px solid #ddd;">Product</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">Category</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Stock</th>
+                  <th style="padding: 12px; border: 1px solid #ddd; text-align: center;">Min</th>
+                  <th style="padding: 12px; border: 1px solid #ddd;">Shop</th>
+                </tr>
+              </thead>
+              <tbody>${productList}</tbody>
+            </table>
+          </div>
+          <p><strong>Action Required:</strong> Please log in and update stock levels.</p>
+        </div>
+      </div>
+    `;
+
+    await emailTransporter.sendMail({
+      from: `"Inventory Alert" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
+      to: adminEmail,
+      subject: subject,
+      html: html,
+      priority: 'high'
+    });
+    console.log(`✅ ${alertType} alert sent for ${products.length} products`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending stock alert email:', error);
+    return false;
+  }
+};
+
+const checkStockLevels = async () => {
+  try {
+    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
+    if (!models.Product) {
+      models = createModels();
+    }
+
+    const products = await models.Product.find({ isActive: true })
+      .populate('shop', 'name location')
+      .lean();
+
+    const outOfStockProducts = [];
+    const lowStockProducts = [];
+
+    products.forEach(product => {
+      const currentStock = product.currentStock || 0;
+      const minStockLevel = product.minStockLevel || 5;
+
+      if (currentStock === 0) {
+        outOfStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
+      } else if (currentStock <= minStockLevel) {
+        lowStockProducts.push({ ...product, shopName: product.shop?.name || product.shopName || 'Unknown Shop' });
+      }
+    });
+
+    if (outOfStockProducts.length > 0) {
+      await sendStockAlertEmail(outOfStockProducts, 'out_of_stock');
+    }
+
+    if (lowStockProducts.length > 0) {
+      const now = new Date();
+      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      const productsToAlert = [];
+
+      for (const product of lowStockProducts) {
+        const dbProduct = await models.Product.findById(product._id);
+        if (!dbProduct) continue;
+
+        const lastAlert = dbProduct.lastStockAlertSent;
+        if (!lastAlert || new Date(lastAlert) < sixHoursAgo) {
+          productsToAlert.push(product);
+          dbProduct.lastStockAlertSent = now;
+          await dbProduct.save();
+        }
+      }
+
+      if (productsToAlert.length > 0) {
+        await sendStockAlertEmail(productsToAlert, 'low_stock');
+      }
+    }
+
+    return {
+      outOfStock: outOfStockProducts.length,
+      lowStock: lowStockProducts.length,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('❌ [STOCK MONITOR] Error:', error);
+    throw error;
+  }
+};
+
+// ==================== EMAIL FUNCTIONS ====================
+const sendSecureCodeEmail = async (email, code, expiresIn = 15) => {
+  try {
+    if (!emailTransporter) {
+      await initializeEmail();
+      if (!emailTransporter) throw new Error('Email service not configured');
+    }
+    
+    const appName = process.env.APP_NAME || 'Pamela Management';
+    
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>🔐 Your Secure Login Code</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background-color: #f4f6f9;
+          margin: 0;
+          padding: 20px;
+        }
+        .container {
+          max-width: 500px;
+          margin: 0 auto;
+          background: #ffffff;
+          border-radius: 16px;
+          padding: 30px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          text-align: center;
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 20px;
+          border-radius: 12px 12px 0 0;
+          margin: -30px -30px 25px -30px;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 22px;
+        }
+        .header .bear {
+          font-size: 40px;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .code-box {
+          background: #f0f4ff;
+          border: 2px dashed #667eea;
+          border-radius: 12px;
+          padding: 25px 20px;
+          margin: 20px 0;
+        }
+        .code-box .label {
+          font-size: 13px;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          font-weight: 600;
+        }
+        .code-box .code {
+          font-size: 48px;
+          font-weight: 800;
+          letter-spacing: 12px;
+          color: #4a3f7a;
+          font-family: 'Courier New', monospace;
+          margin: 10px 0;
+          padding: 10px;
+          background: white;
+          border-radius: 8px;
+          display: inline-block;
+          min-width: 200px;
+        }
+        .expiry {
+          color: #6b7280;
+          font-size: 14px;
+          margin-top: 10px;
+        }
+        .expiry strong {
+          color: #e53e3e;
+        }
+        .security-note {
+          background: #fff5f5;
+          border-left: 4px solid #e53e3e;
+          padding: 12px 16px;
+          margin: 20px 0;
+          text-align: left;
+          font-size: 13px;
+          color: #4a5568;
+          border-radius: 4px;
+        }
+        .security-note strong {
+          color: #e53e3e;
+        }
+        .footer {
+          margin-top: 25px;
+          padding-top: 20px;
+          border-top: 1px solid #e5e7eb;
+          font-size: 12px;
+          color: #9ca3af;
+        }
+        .footer strong {
+          color: #4a5568;
+        }
+        .features {
+          display: flex;
+          justify-content: center;
+          gap: 15px;
+          margin: 15px 0;
+          flex-wrap: wrap;
+        }
+        .feature {
+          background: #f9fafb;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #4a5568;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <span class="bear">🐻</span>
+          <h1>🔐 Your Secure Login Code</h1>
+          <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">${appName}</p>
+        </div>
+        
+        <p style="color: #4a5568; font-size: 16px; margin-bottom: 5px;">
+          Hello <strong>Valued User</strong> 👋
+        </p>
+        <p style="color: #6b7280; font-size: 14px; margin-top: 0;">
+          Use the code below to complete your login to <strong>${appName}</strong>.
+        </p>
+        
+        <div class="code-box">
+          <div class="label">✦ Your Secure Code ✦</div>
+          <div class="code">${code}</div>
+          <div class="expiry">⏰ Expires in <strong>${expiresIn} minutes</strong></div>
+        </div>
+        
+        <div class="features">
+          <span class="feature">🔒 One-Time Use</span>
+          <span class="feature">⏰ Time Limited</span>
+          <span class="feature">🛡️ Secure</span>
+        </div>
+        
+        <div class="security-note">
+          <strong>⚠️ Security Alert:</strong> Never share this code with anyone. 
+          Our team will never ask for your code. If you didn't request this, 
+          please ignore this email.
+        </div>
+        
+        <div style="font-size: 13px; color: #667eea; font-weight: 600; margin: 10px 0;">
+          🐻 Bear Secure Code System
+        </div>
+        
+        <div class="footer">
+          <strong>${appName}</strong><br>
+          This is an automated message, please do not reply.<br>
+          &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+    
+    const text = `
+    =========================================
+    🐻 BEAR SECURE CODE SYSTEM 🐻
+    =========================================
+    
+    Hello Valued User,
+    
+    Your secure login code for ${appName} is:
+    
+    🔐 CODE: ${code}
+    
+    This code expires in ${expiresIn} minutes.
+    
+    ⚠️ Never share this code with anyone.
+    
+    =========================================
+    ${appName} - Secure Login Verification
+    =========================================
+    `;
+    
+    await emailTransporter.sendMail({
+      from: `"🐻 ${appName} Security" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `🔐 Your Secure Login Code - ${appName}`,
+      text: text,
+      html: html,
+      priority: 'high',
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High'
+      }
+    });
+    
+    console.log(`✅ Secure code email sent to ${email} with code: ${code}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send secure code to ${email}:`, error.message);
+    throw new Error('Failed to send secure code.');
+  }
+};
+
+const sendDeviceVerificationEmail = async (user, device, verificationRequest) => {
+  try {
+    if (!emailTransporter) {
+      const initialized = await initializeEmail();
+      if (!initialized || !emailTransporter) {
+        console.error('❌ Email transporter could not be initialized');
+        return false;
+      }
+    }
+
+    let adminEmails = [];
+    try {
+      const admins = await models.User.find({ role: 'admin' }).select('email name');
+      adminEmails = admins.map(a => a.email);
+    } catch (error) {
+      console.error('❌ Error finding admin users:', error);
+    }
+
+    if (adminEmails.length === 0) {
+      adminEmails.push(process.env.ADMIN_EMAIL || 'davidwgrey14@gmail.com');
+    }
+
+    if (user.email && !adminEmails.includes(user.email) && user.role !== 'admin') {
+      adminEmails.push(user.email);
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://pos-frontend-psi-teal.vercel.app';
+    const approveLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=approve`;
+    const rejectLink = `${frontendUrl}/admin/verify-device/${verificationRequest.requestToken}?action=reject`;
+    const appName = process.env.APP_NAME || 'Shop Management';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>🔐 Device Verification Request</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            padding: 20px;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          }
+          .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin: -30px -30px 20px -30px;
+          }
+          .header .bear {
+            font-size: 40px;
+          }
+          .header h1 {
+            margin: 5px 0;
+            font-size: 22px;
+          }
+          .device-card {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+          }
+          .device-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #e8ecf0;
+          }
+          .device-row:last-child {
+            border-bottom: none;
+          }
+          .device-label {
+            color: #718096;
+            font-weight: 500;
+          }
+          .device-value {
+            color: #2d3748;
+            font-weight: 600;
+          }
+          .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+          }
+          .btn-approve {
+            background: #10B981;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+          }
+          .btn-reject {
+            background: #EF4444;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+          }
+          .security-notice {
+            background: #fff5f5;
+            border-left: 4px solid #e53e3e;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #4a5568;
+            border-radius: 4px;
+          }
+          .security-notice strong {
+            color: #e53e3e;
+          }
+          .footer {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 12px;
+            color: #9ca3af;
+          }
+          .footer strong {
+            color: #4a5568;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="bear">🐻</div>
+            <h1>🔐 New Device Verification</h1>
+            <p style="opacity: 0.9;">${appName} • Security Alert</p>
+          </div>
+          
+          <p>Hello <strong>Admin</strong> 👋</p>
+          <p>A user is trying to log in from a new device. Please review the device details below.</p>
+          
+          <div class="device-card">
+            <div class="device-row">
+              <span class="device-label">👤 User</span>
+              <span class="device-value">${user.name || 'Unknown User'} (${user.email})</span>
+            </div>
+            <div class="device-row">
+              <span class="device-label">💻 Device</span>
+              <span class="device-value">${device.deviceName || 'Unknown Device'}</span>
+            </div>
+            <div class="device-row">
+              <span class="device-label">🖥️ OS</span>
+              <span class="device-value">${device.os || 'Unknown'} ${device.osVersion || ''}</span>
+            </div>
+            <div class="device-row">
+              <span class="device-label">🌐 Browser</span>
+              <span class="device-value">${device.browser || 'Unknown'} ${device.browserVersion || ''}</span>
+            </div>
+            <div class="device-row">
+              <span class="device-label">📱 MAC Address</span>
+              <span class="device-value" style="font-family: monospace;">${device.macAddress || 'Unknown'}</span>
+            </div>
+          </div>
+          
+          <div class="actions">
+            <a href="${approveLink}" class="btn-approve">✅ Approve Device</a>
+            <a href="${rejectLink}" class="btn-reject">❌ Reject Device</a>
+          </div>
+          
+          <div class="security-notice">
+            <strong>⚠️ Security Alert:</strong> Only approve this device if you recognize the user and device details.
+          </div>
+          
+          <div class="footer">
+            <strong>${appName}</strong><br>
+            &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    let sentCount = 0;
+    for (const adminEmail of adminEmails) {
+      try {
+        await emailTransporter.sendMail({
+          from: `"🐻 ${appName} Security" <${process.env.EMAIL_USER}>`,
+          to: adminEmail,
+          subject: `🔐 New Device Login Request - ${user.name || 'Unknown User'}`,
+          html: html,
+          priority: 'high'
+        });
+        sentCount++;
+      } catch (error) {
+        console.error(`❌ Failed to send to ${adminEmail}:`, error.message);
+      }
+    }
+
+    return sentCount > 0;
+  } catch (error) {
+    console.error('❌ Error in sendDeviceVerificationEmail:', error);
+    return false;
+  }
+};
+
 // ==================== TRANSACTION DATA FETCHING ====================
 const getAllTransactionData = async (filters = {}) => {
   try {
@@ -2260,19 +1630,882 @@ const getAllTransactionData = async (filters = {}) => {
   }
 };
 
-// ==================== AUTH FUNCTIONS ====================
-const generateSecureCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+// ============================================================
+// ==================== ALL API ROUTES ========================
+// ============================================================
 
-const generateAuthToken = (userId, email, role) => {
-  return jwt.sign(
-    { userId: userId.toString(), email, role: role || 'cashier', timestamp: Date.now() },
-    process.env.JWT_SECRET || 'fallback-secret-key-change-in-production',
-    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
-  );
-};
+// ==================== HEALTH CHECK ====================
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    app: process.env.APP_NAME || 'Pamela Management',
+    version: process.env.APP_VERSION || '1.0.0',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    email: emailTransporter ? 'configured' : 'disabled',
+    deviceVerification: 'enabled',
+    sessionManagement: 'enabled',
+    modelsInitialized: modelsInitialized
+  });
+});
 
-// ==================== API ROUTES ====================
-// Add these route handlers before the 404 handler
+// ==================== AUTH ROUTES ====================
+
+// Request secure code
+app.post('/api/auth/request-code', [body('email').isEmail().normalizeEmail()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, error: 'Invalid email', details: errors.array() });
+
+    const { email } = req.body;
+    const user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
+
+    if (!user) return res.status(404).json({ success: false, message: 'No account found with this email' });
+
+    const secureCode = generateSecureCode();
+    const expiresIn = 15;
+    const expiresAt = new Date(Date.now() + expiresIn * 60 * 1000);
+    const hashedCode = await bcrypt.hash(secureCode, 10);
+
+    await models.SecureCode.findOneAndUpdate(
+      { email },
+      { code: hashedCode, expiresAt, attempts: 0, used: false },
+      { upsert: true, new: true }
+    );
+
+    if (!emailTransporter) {
+      return res.json({ 
+        success: true, 
+        message: 'Secure code generated (email disabled)', 
+        developmentMode: true, 
+        secureCode, 
+        expiresIn 
+      });
+    }
+
+    try {
+      await sendSecureCodeEmail(email, secureCode, expiresIn);
+      res.json({ success: true, message: '🐻 Secure code sent to your email! Please check your inbox.', expiresIn });
+    } catch (emailError) {
+      await models.SecureCode.deleteOne({ email });
+      res.status(500).json({ success: false, message: 'Failed to send secure code. Please try again.' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to process request.' });
+  }
+});
+
+// Verify secure code with device verification
+app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), body('code').isLength({ min: 6, max: 6 }).isNumeric()], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid input' });
+
+    const { email, code } = req.body;
+    const secureCode = await models.SecureCode.findOne({ email });
+
+    if (!secureCode) return res.status(404).json({ success: false, message: 'No secure code found. Request a new one.' });
+    if (new Date() > secureCode.expiresAt) return res.status(400).json({ success: false, message: 'Code expired. Request a new one.' });
+    if (secureCode.used) return res.status(400).json({ success: false, message: 'Code already used.' });
+    if (secureCode.attempts >= 5) return res.status(400).json({ success: false, message: 'Too many attempts. Request a new code.' });
+
+    const isValidCode = await bcrypt.compare(code, secureCode.code);
+    if (!isValidCode) {
+      secureCode.attempts += 1;
+      await secureCode.save();
+      return res.status(400).json({ success: false, message: 'Invalid code', attemptsRemaining: 5 - secureCode.attempts });
+    }
+
+    secureCode.used = true;
+    await secureCode.save();
+
+    let user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (user.isActive === false) return res.status(403).json({ success: false, message: 'Account deactivated.' });
+
+    const deviceInfo = getDeviceInfo(req);
+    let device = await Device.findOne({ userId: user._id, deviceId: deviceInfo.deviceId });
+
+    if (!device) {
+      device = new Device({
+        userId: user._id, deviceId: deviceInfo.deviceId,
+        deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType,
+        os: deviceInfo.os, osVersion: deviceInfo.osVersion,
+        browser: deviceInfo.browser, browserVersion: deviceInfo.browserVersion,
+        macAddress: deviceInfo.macAddress, ipAddress: deviceInfo.ipAddress,
+        isVerified: user.role === 'admin',
+        firstLogin: new Date(), lastLogin: new Date()
+      });
+      await device.save();
+
+      if (user.role !== 'admin') {
+        const requestToken = crypto.randomBytes(32).toString('hex');
+        const verificationRequest = new VerificationRequest({
+          userId: user._id, deviceId: device._id, requestToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+        });
+        await verificationRequest.save();
+        await sendDeviceVerificationEmail(user, device, verificationRequest);
+
+        return res.status(403).json({
+          success: false, requiresVerification: true,
+          message: '🐻 New device detected. Please wait for admin approval.',
+          deviceInfo: { deviceName: device.deviceName, os: device.os, browser: device.browser, macAddress: device.macAddress }
+        });
+      }
+    } else if (!device.isVerified) {
+      const pendingRequest = await VerificationRequest.findOne({ deviceId: device._id, status: 'pending' });
+      if (!pendingRequest) {
+        const requestToken = crypto.randomBytes(32).toString('hex');
+        const verificationRequest = new VerificationRequest({
+          userId: user._id, deviceId: device._id, requestToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+        });
+        await verificationRequest.save();
+        await sendDeviceVerificationEmail(user, device, verificationRequest);
+      }
+      return res.status(403).json({ success: false, requiresVerification: true, message: 'Device pending verification.' });
+    }
+
+    device.lastLogin = new Date();
+    device.loginCount = (device.loginCount || 0) + 1;
+    await device.save();
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
+    const session = new Session({
+      userId: user._id, deviceId: device._id, token,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
+    });
+    await session.save();
+
+    const userData = { _id: user._id, name: user.name, email: user.email, role: user.role || 'cashier', lastLogin: user.lastLogin };
+    if (user.role === 'cashier') { userData.shopId = user.shopId; userData.shopName = user.shopName; }
+
+    return res.status(200).json({ 
+      success: true, 
+      user: userData, 
+      token, 
+      device: { id: device._id, deviceName: device.deviceName, os: device.os, browser: device.browser, isVerified: device.isVerified }, 
+      sessionId: session._id, 
+      message: '🐻 Login successful! Welcome back!', 
+      sessionTimeout: 5 
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
+  }
+});
+
+// Cashier Login
+app.post('/api/auth/cashier/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email and password required' 
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await models.User.findOne({ 
+      email: normalizedEmail, 
+      role: { $in: ['cashier', 'admin'] } 
+    });
+    let cashier = null;
+
+    if (!user) {
+      cashier = await models.Cashier.findOne({ 
+        email: normalizedEmail, 
+        status: 'active' 
+      }).populate('shopId', 'name location');
+      
+      if (!cashier) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Cashier account not found' 
+        });
+      }
+    }
+
+    if (user) {
+      cashier = await models.Cashier.findOne({ 
+        email: normalizedEmail, 
+        status: 'active' 
+      }).populate('shopId', 'name location');
+      
+      if (!cashier) {
+        if (user.role === 'admin') {
+          cashier = { 
+            _id: user._id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role, 
+            status: 'active', 
+            lastLogin: new Date(),
+            shopId: null,
+            shopName: null,
+            assignedShops: []
+          };
+        } else {
+          if (!user.password) {
+            return res.status(401).json({ 
+              success: false, 
+              message: 'Invalid credentials.' 
+            });
+          }
+          const isPasswordValid = user.password.startsWith('$2b$') 
+            ? await bcrypt.compare(password, user.password) 
+            : user.password === password;
+          
+          if (!isPasswordValid) {
+            return res.status(401).json({ 
+              success: false, 
+              message: 'Invalid password' 
+            });
+          }
+          
+          cashier = { 
+            _id: user._id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role, 
+            status: 'active', 
+            lastLogin: new Date(),
+            shopId: null,
+            shopName: null,
+            assignedShops: []
+          };
+        }
+      }
+    }
+
+    if (cashier && cashier.password && cashier.password.startsWith('$2b$')) {
+      const isPasswordValid = await bcrypt.compare(password, cashier.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Invalid password' 
+        });
+      }
+    }
+
+    let assignedShops = [];
+    if (cashier.assignedShops && cashier.assignedShops.length > 0) {
+      const assignedShopIds = cashier.assignedShops
+        .filter(a => a.isActive !== false)
+        .map(a => a.shopId);
+      
+      if (assignedShopIds.length > 0) {
+        const shops = await models.Shop.find({
+          _id: { $in: assignedShopIds },
+          status: 'active'
+        }).select('name location status type');
+        
+        assignedShops = shops.map(shop => ({
+          shopId: shop._id,
+          name: shop.name,
+          location: shop.location,
+          status: shop.status,
+          type: shop.type,
+          isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
+        }));
+      }
+    }
+
+    if (assignedShops.length === 0 && cashier.shopId) {
+      const shop = await models.Shop.findById(cashier.shopId).select('name location status type');
+      if (shop) {
+        assignedShops.push({
+          shopId: shop._id,
+          name: shop.name,
+          location: shop.location,
+          status: shop.status,
+          type: shop.type,
+          isPrimary: true
+        });
+      }
+    }
+
+    const token = generateAuthToken(cashier._id, cashier.email, cashier.role || 'cashier');
+    
+    const userData = {
+      _id: cashier._id,
+      name: cashier.name,
+      email: cashier.email,
+      role: cashier.role || 'cashier',
+      status: cashier.status || 'active',
+      lastLogin: cashier.lastLogin,
+      primaryShop: cashier.shopId ? {
+        shopId: cashier.shopId._id || cashier.shopId,
+        shopName: cashier.shopId.name || cashier.shopName
+      } : null,
+      assignedShops: assignedShops,
+      shopCount: assignedShops.length,
+      canAccessMultipleShops: assignedShops.length > 1
+    };
+
+    await models.Cashier.findByIdAndUpdate(cashier._id, { 
+      lastLogin: new Date() 
+    });
+
+    res.json({ 
+      success: true, 
+      user: userData, 
+      token, 
+      message: '🐻 Login successful! Welcome back!',
+      assignedShops: assignedShops
+    });
+  } catch (error) {
+    console.error('Cashier login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during login.' 
+    });
+  }
+});
+
+// Logout
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
+  try {
+    if (req.session) {
+      req.session.isActive = false;
+      req.session.logoutReason = 'manual';
+      await req.session.save();
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ success: false, message: 'Failed to logout', error: error.message });
+  }
+});
+
+// Refresh Session
+app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
+  try {
+    const newToken = generateAuthToken(req.user._id, req.user.email, req.user.role);
+    
+    if (req.session) {
+      req.session.token = newToken;
+      req.session.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      req.session.lastActivity = new Date();
+      await req.session.save();
+    }
+    
+    res.json({ 
+      success: true, 
+      token: newToken,
+      sessionTimeout: 5,
+      message: 'Session refreshed successfully' 
+    });
+  } catch (error) {
+    console.error('Session refresh error:', error);
+    res.status(500).json({ success: false, message: 'Failed to refresh session', error: error.message });
+  }
+});
+
+// ==================== SHOP ROUTES ====================
+app.get('/api/shops', async (req, res) => {
+  try {
+    if (!models.Shop) models = createModels();
+    const shops = await models.Shop.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: shops, count: shops.length });
+  } catch (error) {
+    console.error('Error fetching shops:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch shops', error: error.message });
+  }
+});
+
+app.post('/api/shops', async (req, res) => {
+  try {
+    const shop = new models.Shop(req.body);
+    await shop.save();
+    res.status(201).json({ success: true, data: shop, message: 'Shop created successfully' });
+  } catch (error) {
+    console.error('Error creating shop:', error);
+    res.status(500).json({ success: false, message: 'Failed to create shop', error: error.message });
+  }
+});
+
+app.put('/api/shops/:id', async (req, res) => {
+  try {
+    const shop = await models.Shop.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true, runValidators: true });
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    res.json({ success: true, data: shop, message: 'Shop updated successfully' });
+  } catch (error) {
+    console.error('Error updating shop:', error);
+    res.status(500).json({ success: false, message: 'Failed to update shop', error: error.message });
+  }
+});
+
+app.delete('/api/shops/:id', async (req, res) => {
+  try {
+    const shop = await models.Shop.findByIdAndDelete(req.params.id);
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    res.json({ success: true, message: 'Shop deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting shop:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete shop', error: error.message });
+  }
+});
+
+// ==================== CASHIER ROUTES ====================
+app.get('/api/cashiers', async (req, res) => {
+  try {
+    if (!models.Cashier) models = createModels();
+    
+    let cashiers;
+    try {
+      cashiers = await models.Cashier.find()
+        .populate('shopId', 'name location status')
+        .sort({ createdAt: -1 });
+    } catch (populateError) {
+      console.warn('Error populating shopId, trying without populate:', populateError.message);
+      cashiers = await models.Cashier.find().sort({ createdAt: -1 });
+    }
+    
+    const enhancedCashiers = cashiers.map(cashier => {
+      const cashierObj = cashier.toObject ? cashier.toObject() : cashier;
+      
+      let assignedShops = [];
+      try {
+        assignedShops = cashierObj.assignedShops || [];
+      } catch (e) {
+        assignedShops = [];
+      }
+      
+      const activeAssignedShops = (assignedShops || [])
+        .filter(assigned => assigned && assigned.isActive !== false)
+        .map(assigned => ({
+          shopId: assigned.shopId?._id || assigned.shopId || null,
+          shopName: assigned.shopId?.name || assigned.shopName || 'Unknown Shop',
+          shopLocation: assigned.shopId?.location || null,
+          shopStatus: assigned.shopId?.status || null,
+          assignedAt: assigned.assignedAt || null
+        }))
+        .filter(shop => shop.shopId !== null);
+      
+      return {
+        ...cashierObj,
+        _id: cashierObj._id || cashierObj.id,
+        name: cashierObj.name || 'Unknown',
+        email: cashierObj.email || 'No email',
+        phone: cashierObj.phone || '',
+        status: cashierObj.status || 'active',
+        role: cashierObj.role || 'cashier',
+        shopId: cashierObj.shopId || null,
+        shopName: cashierObj.shopName || null,
+        assignedShops: activeAssignedShops,
+        activeAssignedShops: activeAssignedShops,
+        assignedShopCount: activeAssignedShops.length,
+        lastLogin: cashierObj.lastLogin || null,
+        createdAt: cashierObj.createdAt || new Date(),
+        primaryShop: cashierObj.shopId ? {
+          shopId: cashierObj.shopId._id || cashierObj.shopId,
+          shopName: cashierObj.shopId?.name || cashierObj.shopName || 'Unknown'
+        } : null
+      };
+    });
+    
+    res.json({ 
+      success: true, 
+      data: enhancedCashiers, 
+      count: enhancedCashiers.length 
+    });
+  } catch (error) {
+    console.error('Error fetching cashiers:', error);
+    res.json({ 
+      success: true, 
+      data: [], 
+      count: 0,
+      message: 'No cashiers available',
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/cashiers', async (req, res) => {
+  try {
+    const { name, email, phone, password, role = 'cashier' } = req.body;
+    
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, email, and password are required' 
+      });
+    }
+    
+    const existingCashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() });
+    if (existingCashier) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cashier with this email already exists' 
+      });
+    }
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const cashier = new models.Cashier({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone || '',
+      password: hashedPassword,
+      role: role,
+      status: 'active',
+      assignedShops: [],
+      shopAssignmentHistory: []
+    });
+    
+    await cashier.save();
+    
+    const cashierResponse = cashier.toObject();
+    delete cashierResponse.password;
+    
+    res.status(201).json({
+      success: true,
+      data: cashierResponse,
+      message: 'Cashier created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating cashier:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create cashier', 
+      error: error.message 
+    });
+  }
+});
+
+app.patch('/api/cashiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, status, password } = req.body;
+    
+    const cashier = await models.Cashier.findById(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+    
+    if (name) cashier.name = name.trim();
+    if (email) cashier.email = email.toLowerCase().trim();
+    if (phone) cashier.phone = phone;
+    if (status) cashier.status = status;
+    if (password) {
+      cashier.password = await bcrypt.hash(password, 10);
+    }
+    
+    cashier.updatedAt = new Date();
+    await cashier.save();
+    
+    const cashierResponse = cashier.toObject();
+    delete cashierResponse.password;
+    
+    res.json({
+      success: true,
+      data: cashierResponse,
+      message: 'Cashier updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating cashier:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update cashier', 
+      error: error.message 
+    });
+  }
+});
+
+app.delete('/api/cashiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const cashier = await models.Cashier.findByIdAndDelete(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Cashier deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting cashier:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete cashier', 
+      error: error.message 
+    });
+  }
+});
+
+// Cashier Shop Assignment
+app.post('/api/cashiers/:id/assign-shops', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required to assign shops' 
+      });
+    }
+
+    const { id } = req.params;
+    const { shopIds, action = 'assign', notes } = req.body;
+    
+    if (!shopIds || !Array.isArray(shopIds) || shopIds.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'At least one shop ID is required' 
+      });
+    }
+
+    const cashier = await models.Cashier.findById(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    const shops = await models.Shop.find({ 
+      _id: { $in: shopIds },
+      status: 'active' 
+    });
+    
+    if (shops.length !== shopIds.length) {
+      const foundIds = shops.map(s => s._id.toString());
+      const missingIds = shopIds.filter(id => !foundIds.includes(id));
+      return res.status(400).json({ 
+        success: false, 
+        message: `Some shops not found or inactive: ${missingIds.join(', ')}` 
+      });
+    }
+
+    if (!cashier.assignedShops) cashier.assignedShops = [];
+    if (!cashier.shopAssignmentHistory) cashier.shopAssignmentHistory = [];
+
+    const adminName = req.user.name || 'Admin';
+    const adminId = req.user._id;
+
+    for (const shopId of shopIds) {
+      const shop = shops.find(s => s._id.toString() === shopId);
+      if (!shop) continue;
+      
+      if (action === 'assign') {
+        const existingAssignment = cashier.assignedShops.find(
+          a => a.shopId && a.shopId.toString() === shopId
+        );
+        
+        if (!existingAssignment) {
+          cashier.assignedShops.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            assignedAt: new Date(),
+            assignedBy: adminId,
+            isActive: true
+          });
+          
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'assigned',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Assigned to shop: ${shop.name}`
+          });
+        } else if (existingAssignment.isActive === false) {
+          existingAssignment.isActive = true;
+          existingAssignment.assignedAt = new Date();
+          existingAssignment.assignedBy = adminId;
+          
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'assigned',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Reactivated assignment to shop: ${shop.name}`
+          });
+        }
+      } else if (action === 'remove') {
+        const assignment = cashier.assignedShops.find(
+          a => a.shopId && a.shopId.toString() === shopId
+        );
+        if (assignment) {
+          assignment.isActive = false;
+          
+          cashier.shopAssignmentHistory.push({
+            shopId: shop._id,
+            shopName: shop.name,
+            action: 'removed',
+            changedBy: adminId,
+            changedByName: adminName,
+            timestamp: new Date(),
+            notes: notes || `Removed from shop: ${shop.name}`
+          });
+        }
+      }
+    }
+
+    const activeShops = cashier.assignedShops.filter(a => a.isActive !== false);
+    if (activeShops.length === 1 && !cashier.shopId) {
+      cashier.shopId = activeShops[0].shopId;
+      cashier.shopName = activeShops[0].shopName;
+    }
+
+    cashier.updatedAt = new Date();
+    await cashier.save();
+
+    let updatedCashier;
+    try {
+      updatedCashier = await models.Cashier.findById(id)
+        .populate('shopId', 'name location')
+        .populate('assignedShops.shopId', 'name location status');
+    } catch (populateError) {
+      console.warn('Error populating cashier after update:', populateError.message);
+      updatedCashier = await models.Cashier.findById(id);
+    }
+
+    const responseData = updatedCashier ? updatedCashier.toObject() : cashier.toObject();
+    if (!responseData.assignedShops) responseData.assignedShops = [];
+    if (!responseData.shopAssignmentHistory) responseData.shopAssignmentHistory = [];
+    delete responseData.password;
+
+    res.json({ 
+      success: true, 
+      data: responseData, 
+      message: `Shops ${action === 'assign' ? 'assigned to' : 'removed from'} cashier successfully` 
+    });
+  } catch (error) {
+    console.error('Error assigning shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to assign shops', 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/cashiers/:id/shops', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const cashier = await models.Cashier.findById(id);
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    const assignedShops = (cashier.assignedShops || [])
+      .filter(a => a.isActive !== false)
+      .map(a => ({
+        shopId: a.shopId?._id || a.shopId,
+        shopName: a.shopId?.name || a.shopName || 'Unknown Shop',
+        shopLocation: a.shopId?.location || null,
+        shopStatus: a.shopId?.status || null,
+        shopType: a.shopId?.type || null,
+        assignedAt: a.assignedAt || null,
+        isPrimary: cashier.shopId && (cashier.shopId._id || cashier.shopId).toString() === (a.shopId?._id || a.shopId).toString()
+      }));
+
+    res.json({ 
+      success: true, 
+      data: {
+        cashier: {
+          id: cashier._id,
+          name: cashier.name,
+          email: cashier.email
+        },
+        assignedShops: assignedShops,
+        primaryShop: cashier.shopId ? {
+          shopId: cashier.shopId._id || cashier.shopId,
+          shopName: cashier.shopId.name || cashier.shopName || 'Unknown'
+        } : null,
+        totalShops: assignedShops.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching cashier shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch cashier shops', 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/cashiers/:id/available-shops', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Admin access required' 
+      });
+    }
+
+    const [cashier, allShops] = await Promise.all([
+      models.Cashier.findById(id),
+      models.Shop.find({ status: 'active' }).select('name location status type')
+    ]);
+
+    if (!cashier) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Cashier not found' 
+      });
+    }
+
+    const assignedShops = cashier.assignedShops || [];
+    const assignedShopIds = assignedShops
+      .filter(a => a.isActive !== false)
+      .map(a => a.shopId ? a.shopId.toString() : null)
+      .filter(id => id !== null);
+
+    const shopsWithStatus = allShops.map(shop => ({
+      ...shop.toObject(),
+      isAssigned: assignedShopIds.includes(shop._id.toString()),
+      isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
+    }));
+
+    res.json({ 
+      success: true, 
+      data: {
+        cashier: {
+          id: cashier._id,
+          name: cashier.name,
+          email: cashier.email
+        },
+        shops: shopsWithStatus,
+        assignedCount: assignedShopIds.length,
+        totalShops: allShops.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching available shops:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch available shops', 
+      error: error.message 
+    });
+  }
+});
 
 // ==================== PRODUCT ROUTES ====================
 app.get('/api/products', async (req, res) => {
@@ -2494,7 +2727,6 @@ app.post('/api/credits/:id/payments', async (req, res) => {
 
     await credit.save();
 
-    // Also update the related transaction
     if (credit.transactionId) {
       await models.Transaction.findByIdAndUpdate(credit.transactionId, {
         amountPaid: credit.amountPaid,
@@ -2625,12 +2857,12 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete transaction', error: error.message });
   }
 });
-// ==================== TRANSACTION METRICS ROUTE - COMPLETELY FIXED ====================
+
+// ==================== TRANSACTION METRICS ROUTE ====================
 app.get('/api/transactions/metrics', async (req, res) => {
   try {
     console.log('📊 [METRICS] Starting transaction metrics fetch...');
     
-    // Ensure models are initialized
     if (!models.Transaction) {
       console.log('📊 [METRICS] Models not initialized, creating...');
       models = createModels();
@@ -2647,18 +2879,12 @@ app.get('/api/transactions/metrics', async (req, res) => {
       filter.$or = [{ shop: shopId }, { shopId: shopId }];
     }
 
-    console.log('📊 [METRICS] Filter:', JSON.stringify(filter));
-
-    // Fetch transactions with proper error handling
     let transactions = [];
     try {
-      transactions = await models.Transaction.find(filter)
-        .lean()
-        .maxTimeMS(10000);
+      transactions = await models.Transaction.find(filter).lean().maxTimeMS(10000);
       console.log(`📊 [METRICS] Found ${transactions.length} transactions`);
     } catch (txError) {
       console.error('❌ [METRICS] Error fetching transactions:', txError);
-      // Return empty metrics
       return res.json({
         success: true,
         data: {
@@ -2683,7 +2909,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
       });
     }
     
-    // If no transactions, return empty metrics
     if (!transactions || transactions.length === 0) {
       console.log('📊 [METRICS] No transactions found, returning empty metrics');
       return res.json({
@@ -2710,7 +2935,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
       });
     }
     
-    // Initialize metrics
     let totalRevenue = 0;
     let totalCash = 0;
     let totalMpesaBank = 0;
@@ -2723,13 +2947,11 @@ app.get('/api/transactions/metrics', async (req, res) => {
     let outstandingCredit = 0;
     let totalTransactions = transactions.length;
 
-    // Process each transaction
     transactions.forEach(t => {
       const amount = t.totalAmount || 0;
       totalRevenue += amount;
       totalItemsSold += t.itemsCount || 0;
       
-      // Calculate cost
       if (t.cost) {
         totalCost += t.cost;
       } else if (t.items && Array.isArray(t.items) && t.items.length > 0) {
@@ -2740,7 +2962,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
         });
       }
 
-      // Payment split
       if (t.paymentSplit) {
         totalCash += t.paymentSplit.cash || 0;
         totalMpesaBank += t.paymentSplit.bank_mpesa || 0;
@@ -2750,7 +2971,6 @@ app.get('/api/transactions/metrics', async (req, res) => {
         totalMpesaBank += amount;
       }
 
-      // Credit handling
       if (t.isCreditTransaction) {
         creditSales += amount;
         totalCreditGiven += amount;
@@ -2766,7 +2986,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
     const creditCollectionRate = totalCreditGiven > 0 ? (recognizedCreditRevenue / totalCreditGiven) * 100 : 0;
     const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-    const result = {
+    res.json({
       success: true,
       data: {
         totalRevenue: parseFloat(totalRevenue.toFixed(2)),
@@ -2787,13 +3007,9 @@ app.get('/api/transactions/metrics', async (req, res) => {
         creditCollectionRate: parseFloat(creditCollectionRate.toFixed(2)),
         averageTransactionValue: parseFloat(avgTransactionValue.toFixed(2))
       }
-    };
-
-    console.log('📊 [METRICS] Successfully calculated metrics');
-    res.json(result);
+    });
   } catch (error) {
     console.error('❌ [METRICS] Fatal error:', error);
-    // Always return a valid response even on error
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch metrics', 
@@ -2820,33 +3036,27 @@ app.get('/api/transactions/metrics', async (req, res) => {
     });
   }
 });
-// ==================== TRANSACTION COMBINED ROUTE - COMPLETELY FIXED ====================
+
+// ==================== TRANSACTION COMBINED ROUTE ====================
 app.get('/api/transactions/combined', async (req, res) => {
   try {
     console.log('📊 [COMBINED] Starting combined data fetch...');
     
     const { startDate, endDate, shopId } = req.query;
     
-    // Set timeout for this heavy operation
     req.setTimeout(30000);
     res.setTimeout(30000);
 
-    // Ensure models exist
     if (!models.Transaction) {
       console.log('📊 [COMBINED] Models not initialized, creating...');
       models = createModels();
     }
 
-    // Build date filter
     let dateFilter = {};
     if (startDate && endDate) {
       dateFilter = { saleDate: { $gte: new Date(startDate), $lte: new Date(endDate) } };
     }
 
-    console.log('📊 [COMBINED] Date filter:', JSON.stringify(dateFilter));
-    console.log('📊 [COMBINED] Shop filter:', shopId || 'all');
-
-    // Fetch all data with proper error handling for each
     let transactions = [];
     let shops = [];
     let cashiers = [];
@@ -2909,7 +3119,6 @@ app.get('/api/transactions/combined', async (req, res) => {
       credits = [];
     }
 
-    // Process transactions with CalculationUtils
     let processedData;
     try {
       processedData = await CalculationUtils.processComprehensiveData(
@@ -2919,7 +3128,6 @@ app.get('/api/transactions/combined', async (req, res) => {
       console.log('📊 [COMBINED] Data processed successfully');
     } catch (processError) {
       console.error('❌ [COMBINED] Error processing data:', processError);
-      // Return basic structure with empty data
       processedData = {
         salesWithProfit: [],
         financialStats: {
@@ -2980,905 +3188,6 @@ app.get('/api/transactions/combined', async (req, res) => {
     });
   }
 });
-// ==================== LOGOUT ROUTE ====================
-app.post('/api/auth/logout', authMiddleware, async (req, res) => {
-  try {
-    if (req.session) {
-      req.session.isActive = false;
-      req.session.logoutReason = 'manual';
-      await req.session.save();
-    }
-    res.json({ success: true, message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ success: false, message: 'Failed to logout', error: error.message });
-  }
-});
-
-// ==================== SESSION REFRESH ROUTE ====================
-app.post('/api/auth/refresh-session', authMiddleware, async (req, res) => {
-  try {
-    const newToken = generateAuthToken(req.user._id, req.user.email, req.user.role);
-    
-    if (req.session) {
-      req.session.token = newToken;
-      req.session.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-      req.session.lastActivity = new Date();
-      await req.session.save();
-    }
-    
-    res.json({ 
-      success: true, 
-      token: newToken,
-      sessionTimeout: 5,
-      message: 'Session refreshed successfully' 
-    });
-  } catch (error) {
-    console.error('Session refresh error:', error);
-    res.status(500).json({ success: false, message: 'Failed to refresh session', error: error.message });
-  }
-});
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    app: process.env.APP_NAME || 'Pamela Management',
-    version: process.env.APP_VERSION || '1.0.0',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    email: emailTransporter ? 'configured' : 'disabled',
-    deviceVerification: 'enabled',
-    sessionManagement: 'enabled',
-    cogsCalculation: 'prorated_based_on_payment',
-    creditPartialPayment: 'supported',
-    immediateRevenueTracking: 'enabled',
-    creditDisplayLogic: 'balance_due_only',
-    upfrontPaymentTracking: 'enhanced',
-    serverless: true,
-    stockMonitoring: 'on-demand',
-    modelsInitialized: modelsInitialized
-  });
-});
-
-// ==================== AUTH ROUTES ====================
-
-// Request secure code - UPDATED with enhanced email
-app.post('/api/auth/request-code', [body('email').isEmail().normalizeEmail()], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, error: 'Invalid email', details: errors.array() });
-
-    const { email } = req.body;
-    const user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
-
-    if (!user) return res.status(404).json({ success: false, message: 'No account found with this email' });
-
-    const secureCode = generateSecureCode();
-    const expiresIn = 15;
-    const expiresAt = new Date(Date.now() + expiresIn * 60 * 1000);
-    const hashedCode = await bcrypt.hash(secureCode, 10);
-
-    await models.SecureCode.findOneAndUpdate(
-      { email },
-      { code: hashedCode, expiresAt, attempts: 0, used: false },
-      { upsert: true, new: true }
-    );
-
-    if (!emailTransporter) {
-      return res.json({ 
-        success: true, 
-        message: 'Secure code generated (email disabled)', 
-        developmentMode: true, 
-        secureCode, 
-        expiresIn 
-      });
-    }
-
-    try {
-      // Use enhanced email template
-      await sendSecureCodeEmail(email, secureCode, expiresIn);
-      res.json({ success: true, message: '🐻 Secure code sent to your email! Please check your inbox.', expiresIn });
-    } catch (emailError) {
-      await models.SecureCode.deleteOne({ email });
-      res.status(500).json({ success: false, message: 'Failed to send secure code. Please try again.' });
-    }
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to process request.' });
-  }
-});
-
-// Verify secure code with device verification
-app.post('/api/auth/verify-code', [body('email').isEmail().normalizeEmail(), body('code').isLength({ min: 6, max: 6 }).isNumeric()], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Invalid input' });
-
-    const { email, code } = req.body;
-    const secureCode = await models.SecureCode.findOne({ email });
-
-    if (!secureCode) return res.status(404).json({ success: false, message: 'No secure code found. Request a new one.' });
-    if (new Date() > secureCode.expiresAt) return res.status(400).json({ success: false, message: 'Code expired. Request a new one.' });
-    if (secureCode.used) return res.status(400).json({ success: false, message: 'Code already used.' });
-    if (secureCode.attempts >= 5) return res.status(400).json({ success: false, message: 'Too many attempts. Request a new code.' });
-
-    const isValidCode = await bcrypt.compare(code, secureCode.code);
-    if (!isValidCode) {
-      secureCode.attempts += 1;
-      await secureCode.save();
-      return res.status(400).json({ success: false, message: 'Invalid code', attemptsRemaining: 5 - secureCode.attempts });
-    }
-
-    secureCode.used = true;
-    await secureCode.save();
-
-    let user = await models.User.findOne({ email }) || await models.Cashier.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (user.isActive === false) return res.status(403).json({ success: false, message: 'Account deactivated.' });
-
-    const deviceInfo = getDeviceInfo(req);
-    let device = await Device.findOne({ userId: user._id, deviceId: deviceInfo.deviceId });
-
-    if (!device) {
-      device = new Device({
-        userId: user._id, deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType,
-        os: deviceInfo.os, osVersion: deviceInfo.osVersion,
-        browser: deviceInfo.browser, browserVersion: deviceInfo.browserVersion,
-        macAddress: deviceInfo.macAddress, ipAddress: deviceInfo.ipAddress,
-        isVerified: user.role === 'admin',
-        firstLogin: new Date(), lastLogin: new Date()
-      });
-      await device.save();
-
-      if (user.role !== 'admin') {
-        const requestToken = crypto.randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id, deviceId: device._id, requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-
-        return res.status(403).json({
-          success: false, requiresVerification: true,
-          message: '🐻 New device detected. Please wait for admin approval.',
-          deviceInfo: { deviceName: device.deviceName, os: device.os, browser: device.browser, macAddress: device.macAddress }
-        });
-      }
-    } else if (!device.isVerified) {
-      const pendingRequest = await VerificationRequest.findOne({ deviceId: device._id, status: 'pending' });
-      if (!pendingRequest) {
-        const requestToken = crypto.randomBytes(32).toString('hex');
-        const verificationRequest = new VerificationRequest({
-          userId: user._id, deviceId: device._id, requestToken,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-        });
-        await verificationRequest.save();
-        await sendDeviceVerificationEmail(user, device, verificationRequest);
-      }
-      return res.status(403).json({ success: false, requiresVerification: true, message: 'Device pending verification.' });
-    }
-
-    device.lastLogin = new Date();
-    device.loginCount = (device.loginCount || 0) + 1;
-    await device.save();
-
-    user.lastLogin = new Date();
-    await user.save();
-
-    const token = generateAuthToken(user._id, user.email, user.role || 'cashier');
-    const session = new Session({
-      userId: user._id, deviceId: device._id, token,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      ipAddress: deviceInfo.ipAddress, userAgent: deviceInfo.userAgent
-    });
-    await session.save();
-
-    const userData = { _id: user._id, name: user.name, email: user.email, role: user.role || 'cashier', lastLogin: user.lastLogin };
-    if (user.role === 'cashier') { userData.shopId = user.shopId; userData.shopName = user.shopName; }
-
-    return res.status(200).json({ 
-      success: true, 
-      user: userData, 
-      token, 
-      device: { id: device._id, deviceName: device.deviceName, os: device.os, browser: device.browser, isVerified: device.isVerified }, 
-      sessionId: session._id, 
-      message: '🐻 Login successful! Welcome back!', 
-      sessionTimeout: 5 
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
-  }
-});
-
-// ==================== CASHIER ROUTES - COMPLETE CRUD ====================
-
-// GET cashiers
-app.get('/api/cashiers', async (req, res) => {
-  try {
-    if (!models.Cashier) {
-      models = createModels();
-    }
-    
-    let cashiers;
-    try {
-      cashiers = await models.Cashier.find()
-        .populate('shopId', 'name location status')
-        .sort({ createdAt: -1 });
-    } catch (populateError) {
-      console.warn('Error populating shopId, trying without populate:', populateError.message);
-      cashiers = await models.Cashier.find().sort({ createdAt: -1 });
-    }
-    
-    const enhancedCashiers = cashiers.map(cashier => {
-      const cashierObj = cashier.toObject ? cashier.toObject() : cashier;
-      
-      let assignedShops = [];
-      try {
-        assignedShops = cashierObj.assignedShops || [];
-      } catch (e) {
-        assignedShops = [];
-      }
-      
-      const activeAssignedShops = (assignedShops || [])
-        .filter(assigned => assigned && assigned.isActive !== false)
-        .map(assigned => ({
-          shopId: assigned.shopId?._id || assigned.shopId || null,
-          shopName: assigned.shopId?.name || assigned.shopName || 'Unknown Shop',
-          shopLocation: assigned.shopId?.location || null,
-          shopStatus: assigned.shopId?.status || null,
-          assignedAt: assigned.assignedAt || null
-        }))
-        .filter(shop => shop.shopId !== null);
-      
-      return {
-        ...cashierObj,
-        _id: cashierObj._id || cashierObj.id,
-        name: cashierObj.name || 'Unknown',
-        email: cashierObj.email || 'No email',
-        phone: cashierObj.phone || '',
-        status: cashierObj.status || 'active',
-        role: cashierObj.role || 'cashier',
-        shopId: cashierObj.shopId || null,
-        shopName: cashierObj.shopName || null,
-        assignedShops: activeAssignedShops,
-        activeAssignedShops: activeAssignedShops,
-        assignedShopCount: activeAssignedShops.length,
-        lastLogin: cashierObj.lastLogin || null,
-        createdAt: cashierObj.createdAt || new Date(),
-        primaryShop: cashierObj.shopId ? {
-          shopId: cashierObj.shopId._id || cashierObj.shopId,
-          shopName: cashierObj.shopId?.name || cashierObj.shopName || 'Unknown'
-        } : null
-      };
-    });
-    
-    res.json({ 
-      success: true, 
-      data: enhancedCashiers, 
-      count: enhancedCashiers.length 
-    });
-  } catch (error) {
-    console.error('Error fetching cashiers:', error);
-    res.json({ 
-      success: true, 
-      data: [], 
-      count: 0,
-      message: 'No cashiers available',
-      error: error.message 
-    });
-  }
-});
-
-// CREATE cashier - ADD THIS
-app.post('/api/cashiers', async (req, res) => {
-  try {
-    const { name, email, phone, password, role = 'cashier' } = req.body;
-    
-    if (!name || !email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Name, email, and password are required' 
-      });
-    }
-    
-    const existingCashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() });
-    if (existingCashier) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Cashier with this email already exists' 
-      });
-    }
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const cashier = new models.Cashier({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      phone: phone || '',
-      password: hashedPassword,
-      role: role,
-      status: 'active',
-      assignedShops: [],
-      shopAssignmentHistory: []
-    });
-    
-    await cashier.save();
-    
-    const cashierResponse = cashier.toObject();
-    delete cashierResponse.password;
-    
-    res.status(201).json({
-      success: true,
-      data: cashierResponse,
-      message: 'Cashier created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating cashier:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to create cashier', 
-      error: error.message 
-    });
-  }
-});
-
-// UPDATE cashier
-app.patch('/api/cashiers/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, phone, status, password } = req.body;
-    
-    const cashier = await models.Cashier.findById(id);
-    if (!cashier) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Cashier not found' 
-      });
-    }
-    
-    if (name) cashier.name = name.trim();
-    if (email) cashier.email = email.toLowerCase().trim();
-    if (phone) cashier.phone = phone;
-    if (status) cashier.status = status;
-    if (password) {
-      cashier.password = await bcrypt.hash(password, 10);
-    }
-    
-    cashier.updatedAt = new Date();
-    await cashier.save();
-    
-    const cashierResponse = cashier.toObject();
-    delete cashierResponse.password;
-    
-    res.json({
-      success: true,
-      data: cashierResponse,
-      message: 'Cashier updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating cashier:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to update cashier', 
-      error: error.message 
-    });
-  }
-});
-
-// DELETE cashier
-app.delete('/api/cashiers/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const cashier = await models.Cashier.findByIdAndDelete(id);
-    if (!cashier) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Cashier not found' 
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Cashier deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting cashier:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete cashier', 
-      error: error.message 
-    });
-  }
-});
-
-// ==================== CASHIER SHOP ASSIGNMENT ROUTES ====================
-
-// Assign shops to a cashier - FIXED
-app.post('/api/cashiers/:id/assign-shops', authMiddleware, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required to assign shops' 
-      });
-    }
-
-    const { id } = req.params;
-    const { shopIds, action = 'assign', notes } = req.body;
-    
-    if (!shopIds || !Array.isArray(shopIds) || shopIds.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'At least one shop ID is required' 
-      });
-    }
-
-    const cashier = await models.Cashier.findById(id);
-    if (!cashier) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Cashier not found' 
-      });
-    }
-
-    const shops = await models.Shop.find({ 
-      _id: { $in: shopIds },
-      status: 'active' 
-    });
-    
-    if (shops.length !== shopIds.length) {
-      const foundIds = shops.map(s => s._id.toString());
-      const missingIds = shopIds.filter(id => !foundIds.includes(id));
-      return res.status(400).json({ 
-        success: false, 
-        message: `Some shops not found or inactive: ${missingIds.join(', ')}` 
-      });
-    }
-
-    // Initialize arrays if they don't exist
-    if (!cashier.assignedShops) {
-      cashier.assignedShops = [];
-    }
-    if (!cashier.shopAssignmentHistory) {
-      cashier.shopAssignmentHistory = [];
-    }
-
-    const adminName = req.user.name || 'Admin';
-    const adminId = req.user._id;
-
-    for (const shopId of shopIds) {
-      const shop = shops.find(s => s._id.toString() === shopId);
-      if (!shop) continue;
-      
-      if (action === 'assign') {
-        const existingAssignment = cashier.assignedShops.find(
-          a => a.shopId && a.shopId.toString() === shopId
-        );
-        
-        if (!existingAssignment) {
-          cashier.assignedShops.push({
-            shopId: shop._id,
-            shopName: shop.name,
-            assignedAt: new Date(),
-            assignedBy: adminId,
-            isActive: true
-          });
-          
-          cashier.shopAssignmentHistory.push({
-            shopId: shop._id,
-            shopName: shop.name,
-            action: 'assigned',
-            changedBy: adminId,
-            changedByName: adminName,
-            timestamp: new Date(),
-            notes: notes || `Assigned to shop: ${shop.name}`
-          });
-        } else if (existingAssignment.isActive === false) {
-          existingAssignment.isActive = true;
-          existingAssignment.assignedAt = new Date();
-          existingAssignment.assignedBy = adminId;
-          
-          cashier.shopAssignmentHistory.push({
-            shopId: shop._id,
-            shopName: shop.name,
-            action: 'assigned',
-            changedBy: adminId,
-            changedByName: adminName,
-            timestamp: new Date(),
-            notes: notes || `Reactivated assignment to shop: ${shop.name}`
-          });
-        }
-      } else if (action === 'remove') {
-        const assignment = cashier.assignedShops.find(
-          a => a.shopId && a.shopId.toString() === shopId
-        );
-        if (assignment) {
-          assignment.isActive = false;
-          
-          cashier.shopAssignmentHistory.push({
-            shopId: shop._id,
-            shopName: shop.name,
-            action: 'removed',
-            changedBy: adminId,
-            changedByName: adminName,
-            timestamp: new Date(),
-            notes: notes || `Removed from shop: ${shop.name}`
-          });
-        }
-      }
-    }
-
-    const activeShops = cashier.assignedShops.filter(a => a.isActive !== false);
-    if (activeShops.length === 1 && !cashier.shopId) {
-      cashier.shopId = activeShops[0].shopId;
-      cashier.shopName = activeShops[0].shopName;
-    }
-
-    cashier.updatedAt = new Date();
-    await cashier.save();
-
-    let updatedCashier;
-    try {
-      updatedCashier = await models.Cashier.findById(id)
-        .populate('shopId', 'name location')
-        .populate('assignedShops.shopId', 'name location status');
-    } catch (populateError) {
-      console.warn('Error populating cashier after update:', populateError.message);
-      updatedCashier = await models.Cashier.findById(id);
-    }
-
-    const responseData = updatedCashier ? updatedCashier.toObject() : cashier.toObject();
-    if (!responseData.assignedShops) {
-      responseData.assignedShops = [];
-    }
-    if (!responseData.shopAssignmentHistory) {
-      responseData.shopAssignmentHistory = [];
-    }
-    delete responseData.password;
-
-    res.json({ 
-      success: true, 
-      data: responseData, 
-      message: `Shops ${action === 'assign' ? 'assigned to' : 'removed from'} cashier successfully` 
-    });
-  } catch (error) {
-    console.error('Error assigning shops:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to assign shops', 
-      error: error.message 
-    });
-  }
-});
-
-// Get shops assigned to a specific cashier
-app.get('/api/cashiers/:id/shops', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const cashier = await models.Cashier.findById(id);
-    if (!cashier) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Cashier not found' 
-      });
-    }
-
-    const assignedShops = (cashier.assignedShops || [])
-      .filter(a => a.isActive !== false)
-      .map(a => ({
-        shopId: a.shopId?._id || a.shopId,
-        shopName: a.shopId?.name || a.shopName || 'Unknown Shop',
-        shopLocation: a.shopId?.location || null,
-        shopStatus: a.shopId?.status || null,
-        shopType: a.shopId?.type || null,
-        assignedAt: a.assignedAt || null,
-        isPrimary: cashier.shopId && (cashier.shopId._id || cashier.shopId).toString() === (a.shopId?._id || a.shopId).toString()
-      }));
-
-    res.json({ 
-      success: true, 
-      data: {
-        cashier: {
-          id: cashier._id,
-          name: cashier.name,
-          email: cashier.email
-        },
-        assignedShops: assignedShops,
-        primaryShop: cashier.shopId ? {
-          shopId: cashier.shopId._id || cashier.shopId,
-          shopName: cashier.shopId.name || cashier.shopName || 'Unknown'
-        } : null,
-        totalShops: assignedShops.length
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching cashier shops:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch cashier shops', 
-      error: error.message 
-    });
-  }
-});
-
-// Get all shops with assignment status for a cashier
-app.get('/api/cashiers/:id/available-shops', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Admin access required' 
-      });
-    }
-
-    const [cashier, allShops] = await Promise.all([
-      models.Cashier.findById(id),
-      models.Shop.find({ status: 'active' }).select('name location status type')
-    ]);
-
-    if (!cashier) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Cashier not found' 
-      });
-    }
-
-    const assignedShops = cashier.assignedShops || [];
-    const assignedShopIds = assignedShops
-      .filter(a => a.isActive !== false)
-      .map(a => a.shopId ? a.shopId.toString() : null)
-      .filter(id => id !== null);
-
-    const shopsWithStatus = allShops.map(shop => ({
-      ...shop.toObject(),
-      isAssigned: assignedShopIds.includes(shop._id.toString()),
-      isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
-    }));
-
-    res.json({ 
-      success: true, 
-      data: {
-        cashier: {
-          id: cashier._id,
-          name: cashier.name,
-          email: cashier.email
-        },
-        shops: shopsWithStatus,
-        assignedCount: assignedShopIds.length,
-        totalShops: allShops.length
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching available shops:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch available shops', 
-      error: error.message 
-    });
-  }
-});
-
-// ==================== SHOP ROUTES ====================
-app.get('/api/shops', async (req, res) => {
-  try {
-    if (!models.Shop) models = createModels();
-    const shops = await models.Shop.find().sort({ createdAt: -1 });
-    res.json({ success: true, data: shops, count: shops.length });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch shops', error: error.message });
-  }
-});
-
-app.post('/api/shops', async (req, res) => {
-  try {
-    const shop = new models.Shop(req.body);
-    await shop.save();
-    res.status(201).json({ success: true, data: shop, message: 'Shop created successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to create shop', error: error.message });
-  }
-});
-
-app.put('/api/shops/:id', async (req, res) => {
-  try {
-    const shop = await models.Shop.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true, runValidators: true });
-    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
-    res.json({ success: true, data: shop, message: 'Shop updated successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to update shop', error: error.message });
-  }
-});
-
-app.delete('/api/shops/:id', async (req, res) => {
-  try {
-    const shop = await models.Shop.findByIdAndDelete(req.params.id);
-    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
-    res.json({ success: true, message: 'Shop deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to delete shop', error: error.message });
-  }
-});
-
-// ==================== CASHIER LOGIN ====================
-app.post('/api/auth/cashier/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email and password required' 
-      });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-    let user = await models.User.findOne({ 
-      email: normalizedEmail, 
-      role: { $in: ['cashier', 'admin'] } 
-    });
-    let cashier = null;
-
-    if (!user) {
-      cashier = await models.Cashier.findOne({ 
-        email: normalizedEmail, 
-        status: 'active' 
-      }).populate('shopId', 'name location');
-      
-      if (!cashier) {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Cashier account not found' 
-        });
-      }
-    }
-
-    if (user) {
-      cashier = await models.Cashier.findOne({ 
-        email: normalizedEmail, 
-        status: 'active' 
-      }).populate('shopId', 'name location');
-      
-      if (!cashier) {
-        if (user.role === 'admin') {
-          cashier = { 
-            _id: user._id, 
-            name: user.name, 
-            email: user.email, 
-            role: user.role, 
-            status: 'active', 
-            lastLogin: new Date(),
-            shopId: null,
-            shopName: null,
-            assignedShops: []
-          };
-        } else {
-          if (!user.password) {
-            return res.status(401).json({ 
-              success: false, 
-              message: 'Invalid credentials.' 
-            });
-          }
-          const isPasswordValid = user.password.startsWith('$2b$') 
-            ? await bcrypt.compare(password, user.password) 
-            : user.password === password;
-          
-          if (!isPasswordValid) {
-            return res.status(401).json({ 
-              success: false, 
-              message: 'Invalid password' 
-            });
-          }
-          
-          cashier = { 
-            _id: user._id, 
-            name: user.name, 
-            email: user.email, 
-            role: user.role, 
-            status: 'active', 
-            lastLogin: new Date(),
-            shopId: null,
-            shopName: null,
-            assignedShops: []
-          };
-        }
-      }
-    }
-
-    if (cashier && cashier.password && cashier.password.startsWith('$2b$')) {
-      const isPasswordValid = await bcrypt.compare(password, cashier.password);
-      if (!isPasswordValid) {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'Invalid password' 
-        });
-      }
-    }
-
-    let assignedShops = [];
-    if (cashier.assignedShops && cashier.assignedShops.length > 0) {
-      const assignedShopIds = cashier.assignedShops
-        .filter(a => a.isActive !== false)
-        .map(a => a.shopId);
-      
-      if (assignedShopIds.length > 0) {
-        const shops = await models.Shop.find({
-          _id: { $in: assignedShopIds },
-          status: 'active'
-        }).select('name location status type');
-        
-        assignedShops = shops.map(shop => ({
-          shopId: shop._id,
-          name: shop.name,
-          location: shop.location,
-          status: shop.status,
-          type: shop.type,
-          isPrimary: cashier.shopId && cashier.shopId.toString() === shop._id.toString()
-        }));
-      }
-    }
-
-    if (assignedShops.length === 0 && cashier.shopId) {
-      const shop = await models.Shop.findById(cashier.shopId).select('name location status type');
-      if (shop) {
-        assignedShops.push({
-          shopId: shop._id,
-          name: shop.name,
-          location: shop.location,
-          status: shop.status,
-          type: shop.type,
-          isPrimary: true
-        });
-      }
-    }
-
-    const token = generateAuthToken(cashier._id, cashier.email, cashier.role || 'cashier');
-    
-    const userData = {
-      _id: cashier._id,
-      name: cashier.name,
-      email: cashier.email,
-      role: cashier.role || 'cashier',
-      status: cashier.status || 'active',
-      lastLogin: cashier.lastLogin,
-      primaryShop: cashier.shopId ? {
-        shopId: cashier.shopId._id || cashier.shopId,
-        shopName: cashier.shopId.name || cashier.shopName
-      } : null,
-      assignedShops: assignedShops,
-      shopCount: assignedShops.length,
-      canAccessMultipleShops: assignedShops.length > 1
-    };
-
-    await models.Cashier.findByIdAndUpdate(cashier._id, { 
-      lastLogin: new Date() 
-    });
-
-    res.json({ 
-      success: true, 
-      user: userData, 
-      token, 
-      message: '🐻 Login successful! Welcome back!',
-      assignedShops: assignedShops
-    });
-  } catch (error) {
-    console.error('Cashier login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error during login.' 
-    });
-  }
-});
-
-// ==================== OTHER ROUTES ====================
-// [Keep all other existing routes - products, expenses, credits, transactions, etc.]
-// They remain unchanged from your original file
 
 // ==================== STOCK ALERT ENDPOINTS ====================
 app.post('/api/stock/check-now', async (req, res) => {
@@ -3918,7 +3227,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// ==================== 404 HANDLER ====================
+// ==================== 404 HANDLER - MUST BE LAST ====================
 app.use('/api/*', (req, res) => {
   res.status(404).json({ success: false, message: 'API endpoint not found' });
 });
@@ -3953,4 +3262,3 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     console.log('='.repeat(60));
   });
 }
-
